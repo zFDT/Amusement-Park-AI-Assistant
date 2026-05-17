@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.redis_client import close_redis
-from app.api.routes import chat, waittimes, parks
+from app.api.routes import chat, waittimes, parks, users
 
 app = FastAPI(title="游园助理 API", version="0.1.0")
 
@@ -18,6 +18,7 @@ app.add_middleware(
 app.include_router(chat.router, prefix="/api")
 app.include_router(waittimes.router, prefix="/api")
 app.include_router(parks.router, prefix="/api")
+app.include_router(users.router, prefix="/api")
 
 
 @app.on_event("shutdown")

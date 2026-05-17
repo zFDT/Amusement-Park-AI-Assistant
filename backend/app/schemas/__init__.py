@@ -50,6 +50,7 @@ class AIConfig(BaseModel):
 
 class CreateSessionRequest(PlanningInfo):
     ai_config: AIConfig | None = None
+    user_id: str | None = None  # 关联用户，可选（匿名用户不传）
 
 
 class CreateSessionResponse(BaseModel):
@@ -63,6 +64,59 @@ class ChatRequest(BaseModel):
     message: str
     current_location: dict | None = None
     ai_config: AIConfig | None = None
+
+
+class UpdateSessionRequest(BaseModel):
+    completed_attractions: list[str] | None = None
+    current_location: dict | None = None
+
+
+class UpdateSessionResponse(BaseModel):
+    session_id: str
+    completed_attractions: list[str]
+
+
+class ShareSessionResponse(BaseModel):
+    code: str
+    expires_in_seconds: int
+
+
+class ResumeSessionResponse(BaseModel):
+    session_id: str
+    planning: PlanningInfo
+    completed_attractions: list[str]
+    current_location: dict | None
+
+
+# ── User / Visit schemas ──────────────────────────────────────────────────────
+
+class LoginRequest(BaseModel):
+    user_id: str  # 用户自填的唯一标识（昵称/口令）
+
+
+class LoginResponse(BaseModel):
+    user_id: str
+    is_new: bool  # True = 新用户刚注册，False = 老用户登录
+
+
+class VisitSummary(BaseModel):
+    visit_id: str
+    park_id: str
+    visit_date: str
+    status: str  # active | archived
+    completed_count: int
+    created_at: str
+    planning_snapshot: dict | None = None  # 入园前规划信息，用于前端恢复 session
+
+
+class VisitListResponse(BaseModel):
+    user_id: str
+    visits: list[VisitSummary]
+
+
+class ArchiveVisitResponse(BaseModel):
+    visit_id: str
+    status: str
 
 
 class WaitTimeItem(BaseModel):

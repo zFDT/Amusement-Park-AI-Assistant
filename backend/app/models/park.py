@@ -16,6 +16,40 @@ def _now():
     return datetime.now(timezone.utc)
 
 
+class User(Base):
+    """用户（以自定义昵称/口令作为唯一标识，无密码）"""
+    __tablename__ = "users"
+
+    id = Column(String(100), primary_key=True)  # 用户自填的唯一标识，直接作为 PK
+    created_at = Column(DateTime(timezone=True), default=_now)
+    last_seen_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    visits = relationship("ParkVisit", back_populates="user", cascade="all, delete-orphan")
+
+
+class ParkVisit(Base):
+    """一次游园记录（对应一个 AI 会话）"""
+    __tablename__ = "park_visits"
+
+    id = Column(String(50), primary_key=True)  # UUID，同时作为 Redis session_id
+    user_id = Column(String(100), ForeignKey("users.id"), nullable=False)
+    park_id = Column(String(50), ForeignKey("parks.id"), nullable=False)
+    visit_date = Column(String(20))  # "2026-05-18"
+    status = Column(String(20), default="active")  # active | archived
+    planning_snapshot = Column(JSON)  # 入园前填写的规划信息快照
+    completed_attractions = Column(JSON, default=list)
+    current_location = Column(JSON)
+    created_at = Column(DateTime(timezone=True), default=_now)
+    updated_at = Column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+    user = relationship("User", back_populates="visits")
+    park = relationship("Park")
+
+    __table_args__ = (
+        Index("ix_park_visits_user_status", "user_id", "status"),
+    )
+
+
 class Park(Base):
     """乐园基本信息"""
     __tablename__ = "parks"

@@ -11,6 +11,7 @@ import type {
 } from '@/types'
 
 interface AppState {
+  userId: string | null
   sessionId: string | null
   parkId: ParkId | null
   planningInfo: PlanningInfo | null
@@ -23,7 +24,9 @@ interface AppState {
   completedAttractions: string[]
   currentLocation: Location | null
 
+  setUserId: (userId: string) => void
   setSession: (sessionId: string, parkId: ParkId, planningInfo: PlanningInfo) => void
+  resumeSession: (sessionId: string, parkId: ParkId, planningInfo: PlanningInfo, completedAttractions: string[], initialMessages?: Message[]) => void
   setAIConfig: (config: AIConfig | null) => void
   addMessage: (message: Message) => void
   updateLastMessage: (content: string, route?: RouteItem[]) => void
@@ -33,11 +36,13 @@ interface AppState {
   markAttractionComplete: (attractionId: string) => void
   setCurrentLocation: (location: Location | null) => void
   resetSession: () => void
+  logout: () => void
 }
 
 export const useAppStore = create<AppState>()(
   persist(
     (set) => ({
+      userId: null,
       sessionId: null,
       parkId: null,
       planningInfo: null,
@@ -50,8 +55,13 @@ export const useAppStore = create<AppState>()(
       completedAttractions: [],
       currentLocation: null,
 
+      setUserId: (userId) => set({ userId }),
+
       setSession: (sessionId, parkId, planningInfo) =>
         set({ sessionId, parkId, planningInfo, messages: [], currentRoute: [], completedAttractions: [] }),
+
+      resumeSession: (sessionId, parkId, planningInfo, completedAttractions, initialMessages = []) =>
+        set({ sessionId, parkId, planningInfo, completedAttractions, messages: initialMessages, currentRoute: [] }),
 
       setAIConfig: (aiConfig) => set({ aiConfig }),
 
@@ -92,10 +102,23 @@ export const useAppStore = create<AppState>()(
           completedAttractions: [],
           currentLocation: null,
         }),
+
+      logout: () =>
+        set({
+          userId: null,
+          sessionId: null,
+          parkId: null,
+          planningInfo: null,
+          messages: [],
+          currentRoute: [],
+          completedAttractions: [],
+          currentLocation: null,
+        }),
     }),
     {
       name: 'youyuan-session',
       partialize: (state) => ({
+        userId: state.userId,
         sessionId: state.sessionId,
         parkId: state.parkId,
         planningInfo: state.planningInfo,

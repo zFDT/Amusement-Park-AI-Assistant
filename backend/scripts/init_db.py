@@ -15,7 +15,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.core.config import settings
-from app.models.park import Base, Park, Attraction
+from app.models.park import Base, Park, Attraction, User, ParkVisit  # noqa: F401 — ensure all models registered
 
 DATA_DIR = Path(__file__).parent.parent / "app" / "data"
 

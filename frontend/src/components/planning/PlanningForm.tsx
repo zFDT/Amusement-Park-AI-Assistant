@@ -24,6 +24,7 @@ interface PlanningFormProps {
 export function PlanningForm({ parkId }: PlanningFormProps) {
   const navigate = useNavigate()
   const { setSession, aiConfig } = useAppStore()
+  const userId = useAppStore((s) => s.userId)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -78,7 +79,7 @@ export function PlanningForm({ parkId }: PlanningFormProps) {
     }
 
     try {
-      const result = await createSession(planningInfo, aiConfig)
+      const result = await createSession(planningInfo, aiConfig, userId ?? undefined)
       setSession(result.sessionId, parkId, planningInfo)
       navigate('/assistant')
     } catch (err) {
