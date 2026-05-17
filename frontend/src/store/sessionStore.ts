@@ -7,12 +7,14 @@ import type {
   WaitTimeData,
   Location,
   ParkId,
+  AIConfig,
 } from '@/types'
 
 interface AppState {
   sessionId: string | null
   parkId: ParkId | null
   planningInfo: PlanningInfo | null
+  aiConfig: AIConfig | null
   messages: Message[]
   isStreaming: boolean
   waitTimes: Record<string, WaitTimeData>
@@ -22,6 +24,7 @@ interface AppState {
   currentLocation: Location | null
 
   setSession: (sessionId: string, parkId: ParkId, planningInfo: PlanningInfo) => void
+  setAIConfig: (config: AIConfig | null) => void
   addMessage: (message: Message) => void
   updateLastMessage: (content: string, route?: RouteItem[]) => void
   setStreaming: (streaming: boolean) => void
@@ -38,6 +41,7 @@ export const useAppStore = create<AppState>()(
       sessionId: null,
       parkId: null,
       planningInfo: null,
+      aiConfig: null,
       messages: [],
       isStreaming: false,
       waitTimes: {},
@@ -48,6 +52,8 @@ export const useAppStore = create<AppState>()(
 
       setSession: (sessionId, parkId, planningInfo) =>
         set({ sessionId, parkId, planningInfo, messages: [], currentRoute: [], completedAttractions: [] }),
+
+      setAIConfig: (aiConfig) => set({ aiConfig }),
 
       addMessage: (message) =>
         set((state) => ({ messages: [...state.messages, message] })),
@@ -93,6 +99,7 @@ export const useAppStore = create<AppState>()(
         sessionId: state.sessionId,
         parkId: state.parkId,
         planningInfo: state.planningInfo,
+        aiConfig: state.aiConfig,
         messages: state.messages,
         currentRoute: state.currentRoute,
         completedAttractions: state.completedAttractions,

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Sparkles } from 'lucide-react'
 import { PlanningForm } from '@/components/planning/PlanningForm'
+import { AIConfigPanel } from '@/components/settings/AIConfigPanel'
 import type { ParkId } from '@/types'
 
 const PARKS = [
@@ -39,6 +40,9 @@ export function HomePage() {
             <p className="text-sm text-gray-500 mt-1">
               填写信息后，AI 将为你生成个性化游园路线
             </p>
+          </div>
+          <div className="mb-6">
+            <AIConfigPanel />
           </div>
           <PlanningForm parkId={selectedPark} />
         </div>

@@ -11,6 +11,7 @@ export function useChat() {
   const {
     sessionId,
     currentLocation,
+    aiConfig,
     addMessage,
     updateLastMessage,
     setStreaming,
@@ -47,7 +48,7 @@ export function useChat() {
 
       try {
         await streamChat(
-          { sessionId, message: content, currentLocation: currentLocation ?? undefined },
+          { sessionId, message: content, currentLocation: currentLocation ?? undefined, aiConfig: aiConfig ?? undefined },
           (chunk) => {
             if (chunk.type === 'text') {
               accumulated += chunk.content
@@ -69,7 +70,7 @@ export function useChat() {
         abortRef.current = null
       }
     },
-    [sessionId, isStreaming, currentLocation, addMessage, updateLastMessage, setStreaming, setCurrentRoute]
+    [sessionId, isStreaming, currentLocation, aiConfig, addMessage, updateLastMessage, setStreaming, setCurrentRoute]
   )
 
   const stopStreaming = useCallback(() => {

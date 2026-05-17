@@ -114,8 +114,15 @@ export interface Location {
   label?: string
 }
 
+export interface AIConfig {
+  authToken: string
+  baseUrl: string
+  model: string
+}
+
 export interface ChatRequest {
   sessionId: string
   message: string
   currentLocation?: Location
+  aiConfig?: AIConfig
 }

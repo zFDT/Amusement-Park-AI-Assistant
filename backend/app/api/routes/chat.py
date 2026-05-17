@@ -67,7 +67,9 @@ async def create_session(request: CreateSessionRequest):
     except Exception:
         pass
 
-    initial_plan, route = await generate_initial_plan(request, wt_json, strategy_snippets)
+    initial_plan, route = await generate_initial_plan(
+        request, wt_json, strategy_snippets, ai_config=request.ai_config
+    )
 
     session_data = {
         "session_id": session_id,
@@ -124,6 +126,7 @@ async def chat_stream(request: ChatRequest):
             completed_attractions=session.get("completed_attractions", []),
             current_location=request.current_location,
             strategy_snippets=strategy_snippets,
+            ai_config=request.ai_config,
         ):
             if chunk["type"] == "text":
                 accumulated += chunk["content"]

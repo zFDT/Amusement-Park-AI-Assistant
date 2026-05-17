@@ -1,4 +1,4 @@
-import type { PlanningInfo, WaitTimesResponse, RouteItem } from '@/types'
+import type { PlanningInfo, WaitTimesResponse, RouteItem, AIConfig } from '@/types'
 
 const BASE_URL = '/api'
 
@@ -20,10 +20,17 @@ export interface CreateSessionResponse {
   route: RouteItem[]
 }
 
-export function createSession(planningInfo: PlanningInfo): Promise<CreateSessionResponse> {
+export function createSession(planningInfo: PlanningInfo, aiConfig?: AIConfig | null): Promise<CreateSessionResponse> {
   return request('/sessions', {
     method: 'POST',
-    body: JSON.stringify(planningInfo),
+    body: JSON.stringify({
+      ...planningInfo,
+      ai_config: aiConfig ? {
+        auth_token: aiConfig.authToken,
+        base_url: aiConfig.baseUrl,
+        model: aiConfig.model,
+      } : undefined,
+    }),
   })
 }
 

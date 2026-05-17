@@ -41,8 +41,15 @@ class RouteItem(BaseModel):
     type: Literal["attraction", "dining", "show", "break"] = "attraction"
 
 
+class AIConfig(BaseModel):
+    """用户自定义 AI 配置，每次请求携带，后端不存储"""
+    auth_token: str
+    base_url: str = "https://api.anthropic.com"
+    model: str = "claude-sonnet-4-6"
+
+
 class CreateSessionRequest(PlanningInfo):
-    pass
+    ai_config: AIConfig | None = None
 
 
 class CreateSessionResponse(BaseModel):
@@ -55,6 +62,7 @@ class ChatRequest(BaseModel):
     session_id: str
     message: str
     current_location: dict | None = None
+    ai_config: AIConfig | None = None
 
 
 class WaitTimeItem(BaseModel):

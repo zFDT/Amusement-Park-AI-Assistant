@@ -6,17 +6,29 @@ from typing import AsyncIterator
 import anthropic
 
 from app.core.config import settings
-from app.schemas import PlanningInfo, RouteItem
+from app.schemas import PlanningInfo, RouteItem, AIConfig
 from app.services.prompt_builder import build_system_prompt
 
-_client: anthropic.AsyncAnthropic | None = None
+_default_client: anthropic.AsyncAnthropic | None = None
 
 
-def get_client() -> anthropic.AsyncAnthropic:
-    global _client
-    if _client is None:
-        _client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-    return _client
+def _get_client(ai_config: AIConfig | None = None) -> anthropic.AsyncAnthropic:
+    """返回 AI 客户端。优先使用用户传入的配置，否则使用服务端默认配置。"""
+    if ai_config:
+        return anthropic.AsyncAnthropic(
+            api_key=ai_config.auth_token,
+            base_url=ai_config.base_url,
+        )
+    global _default_client
+    if _default_client is None:
+        _default_client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+    return _default_client
+
+
+def _resolve_model(ai_config: AIConfig | None) -> str:
+    if ai_config and ai_config.model:
+        return ai_config.model
+    return settings.claude_model
 
 
 def _parse_route_from_text(text: str) -> list[RouteItem] | None:
@@ -37,6 +49,7 @@ async def stream_chat_response(
     completed_attractions: list[str],
     current_location: dict | None,
     strategy_snippets: list[str] | None = None,
+    ai_config: AIConfig | None = None,
 ) -> AsyncIterator[dict]:
     current_time = datetime.now(timezone.utc).astimezone().isoformat()
     system_prompt = build_system_prompt(
@@ -48,11 +61,12 @@ async def stream_chat_response(
         strategy_snippets=strategy_snippets,
     )
 
-    client = get_client()
+    client = _get_client(ai_config)
+    model = _resolve_model(ai_config)
     accumulated = ""
 
     async with client.messages.stream(
-        model=settings.claude_model,
+        model=model,
         max_tokens=2048,
         system=system_prompt,
         messages=messages,
@@ -72,6 +86,7 @@ async def generate_initial_plan(
     planning: PlanningInfo,
     wait_times_json: str,
     strategy_snippets: list[str] | None = None,
+    ai_config: AIConfig | None = None,
 ) -> tuple[str, list[RouteItem]]:
     current_time = datetime.now(timezone.utc).astimezone().isoformat()
     system_prompt = build_system_prompt(
@@ -83,9 +98,10 @@ async def generate_initial_plan(
         strategy_snippets=strategy_snippets,
     )
 
-    client = get_client()
+    client = _get_client(ai_config)
+    model = _resolve_model(ai_config)
     response = await client.messages.create(
-        model=settings.claude_model,
+        model=model,
         max_tokens=2048,
         system=system_prompt,
         messages=[

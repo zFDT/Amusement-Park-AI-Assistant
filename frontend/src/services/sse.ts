@@ -1,4 +1,4 @@
-import type { ChatRequest, RouteItem } from '@/types'
+import type { ChatRequest, RouteItem, AIConfig } from '@/types'
 
 type SSEChunk =
   | { type: 'text'; content: string }
@@ -14,7 +14,16 @@ export async function streamChat(
   const res = await fetch('/api/chat/stream', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(request),
+    body: JSON.stringify({
+      session_id: request.sessionId,
+      message: request.message,
+      current_location: request.currentLocation,
+      ai_config: request.aiConfig ? {
+        auth_token: request.aiConfig.authToken,
+        base_url: request.aiConfig.baseUrl,
+        model: request.aiConfig.model,
+      } : undefined,
+    }),
     signal,
   })
 
