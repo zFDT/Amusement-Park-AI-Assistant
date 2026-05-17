@@ -1,0 +1,114 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## 关键约束
+
+- **前端包管理必须用 `yarn`**，不能用 `npm` 或 `npx`。当前机器 npm 11 与 Node 24 存在兼容性问题（minipass-sized 模块报错），yarn 已通过 corepack 安装。
+- 后端 Python 虚拟环境在 `backend/.venv/`，Windows 激活命令为 `.venv/Scripts/activate`。
+
+---
+
+## 常用命令
+
+### 数据库（必须先启动）
+
+```bash
+docker compose up -d          # 启动 PostgreSQL(:5432) + Redis(:6379)
+docker compose down           # 停止
+```
+
+### 后端
+
+```bash
+cd backend
+.venv/Scripts/activate        # Windows 激活虚拟环境
+
+# 首次或新依赖安装
+pip install -r requirements.txt
+
+# 初始化数据库并导入乐园静态数据
+python -m scripts.init_db
+
+# 启动开发服务器（热重载）
+uvicorn main:app --reload --port 8000
+
+# 采集小红书攻略（需要 Chrome + DrissionPage）
+python -m scripts.strategy_collector.collect --park hongkong_disney --limit 20
+```
+
+### 前端
+
+```bash
+cd frontend
+yarn install      # 安装依赖
+yarn dev          # 开发服务器 :5173，自动代理 /api -> :8000
+yarn build        # TypeScript 编译 + Vite 构建
+```
+
+---
+
+## 架构概览
+
+### 数据流
+
+```
+用户浏览器
+  → POST /api/sessions        创建会话，生成初始路线（非流式）
+  → POST /api/chat/stream     对话，SSE 流式返回 AI 回复 + 路线更新
+  → GET  /api/waittimes/{id}  获取实时排队时间（Redis 缓存 5 分钟）
+```
+
+### 后端核心逻辑（`backend/app/`）
+
+**会话生命周期**（`api/routes/chat.py`）：
+1. `POST /api/sessions`：接收 `PlanningInfo`，拉取实时排队数据 + 数据库攻略摘要，调用 `generate_initial_plan()` 生成初始路线，将 session 和消息历史存入 Redis（TTL 24h）。
+2. `POST /api/chat/stream`：从 Redis 读取 session 和消息历史，重新拉取排队数据，调用 `stream_chat_response()` 以 SSE 格式流式返回。AI 回复中若包含 ` ```route ``` ` 代码块，解析后额外发送 `route_update` 事件。
+
+**AI 客户端**（`services/ai_service.py`）：
+- 支持 per-request AI 配置（`AIConfig`：`auth_token` + `base_url` + `model`），优先使用用户传入的配置，否则使用 `settings.anthropic_api_key`。这是支持用户自带 Key 和自定义代理地址的核心机制。
+
+**System Prompt 构建**（`services/prompt_builder.py`）：
+- `build_system_prompt()` 将用户规划信息、实时排队 JSON、已完成项目、当前位置、攻略摘要（最多 5 条）拼装成完整 System Prompt，每次对话都重新构建。
+
+**排队数据**（`services/waittime_service.py`）：
+- 从 queue-times.com 拉取，香港迪士尼 park_id=**31**，上海迪士尼 park_id=**30**。
+- 香港迪士尼返回平铺的 `rides[]`，上海迪士尼返回 `lands[].rides[]`，代码已做兼容处理。
+
+**数据库模型**（`models/park.py`）：
+- `Park` / `Attraction` / `Strategy` 三张表，用 SQLAlchemy async。
+- `Attraction.queue_times_ride_id` 是与 queue-times.com 数据关联的外键。
+- Session 和消息历史**不入库**，只存 Redis。
+
+**乐园静态数据**（`app/data/*.json`）：
+- `hongkong_disney.json` 和 `shanghai_disney.json` 是项目数据的权威来源，`init_db.py` 读取这两个文件导入数据库。
+
+### 前端核心逻辑（`frontend/src/`）
+
+**状态管理**（`store/sessionStore.ts`）：
+- 单一 Zustand store，通过 `persist` 中间件将 `sessionId`、`planningInfo`、`aiConfig`、`messages`、`currentRoute` 持久化到 `localStorage`（key: `youyuan-session`）。
+- `aiConfig` 存储用户填写的 AI 配置，随每次 API 请求携带，后端不存储。
+
+**对话流程**（`hooks/useChat.ts`）：
+- `sendMessage()` 先向 store 追加用户消息和空的 assistant 消息占位，再调用 `streamChat()`，通过 `updateLastMessage()` 逐字更新最后一条消息内容。收到 `route_update` 事件时同步更新 `currentRoute`。
+
+**SSE 客户端**（`services/sse.ts`）：
+- 手动解析 `text/event-stream`，将 `data:` 行解析为 `SSEChunk`（`text` / `route_update` / `done` / `error`）。
+
+**路由**：两个页面，`/`（`HomePage`：乐园选择 + 规划表单 + AI 配置面板）和 `/assistant`（`AssistantPage`：对话 + 排队时间 Tab 切换）。
+
+### 前后端字段命名约定
+
+后端 Pydantic 用 `snake_case`（`session_id`、`auth_token`），前端 TypeScript 用 `camelCase`（`sessionId`、`authToken`）。`services/sse.ts` 和 `services/api.ts` 负责在发送请求时做转换，不要在其他地方做这个转换。
+
+---
+
+## 环境变量（`backend/.env`）
+
+| 变量 | 说明 |
+| --- | --- |
+| `ANTHROPIC_API_KEY` | 服务端默认 Key，用户未配置时使用，可留空 |
+| `DATABASE_URL` | 默认 `postgresql+asyncpg://youyuan:youyuan@localhost:5432/youyuan` |
+| `REDIS_URL` | 默认 `redis://localhost:6379` |
+| `CORS_ORIGINS` | 默认 `http://localhost:5173` |
+| `CLAUDE_MODEL` | 默认 `claude-sonnet-4-6` |
