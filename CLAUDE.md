@@ -6,6 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **前端包管理必须用 `yarn`**，不能用 `npm` 或 `npx`。当前机器 npm 11 与 Node 24 存在兼容性问题（minipass-sized 模块报错），yarn 已通过 corepack 安装。
 - 后端 Python 虚拟环境在 `backend/.venv/`，Windows 激活命令为 `.venv/Scripts/activate`。
+- **每完成一次完整的功能修改/优化/修复后，必须立即用中文进行 git commit 提交**，格式：`feat/fix/refactor/docs(模块): 简短描述`。例：`feat(用户): 新增登录和游园记录管理`、`fix(排队): 修复香港迪士尼 park_id 错误`。
 
 ---
 
