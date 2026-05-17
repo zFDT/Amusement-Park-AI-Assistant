@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -c \"import sys, json, re; data=json.load(sys.stdin); fp=data.get('tool_input',{}).get('file_path') or data.get('tool_response',{}).get('filePath',''); print(json.dumps({'hookSpecificOutput':{'hookEventName':'PostToolUse','additionalContext':'提醒：本次修改完成后，请用中文 commit 提交，格式如：feat/fix/refactor(模块): 描述'}})) if re.search(r'\\\\.(ts|tsx|py)$', fp) else None\" 2>/dev/null || true"
+          }
+        ]
+      }
+    ]
+  }
+}
