@@ -1,0 +1,121 @@
+import json
+from datetime import datetime
+from app.schemas import PlanningInfo, RouteItem
+
+
+PREFERENCE_LABELS = {
+    "thrill_rides": "刺激项目（过山车等）",
+    "family_rides": "亲子项目",
+    "shows": "表演/演出",
+    "character_meet": "角色见面",
+    "photography": "拍照打卡",
+    "dining": "特色餐饮",
+    "parades": "花车巡游",
+}
+
+EXPERIENCE_LABELS = {
+    "first_time": "首次游览",
+    "visited_before": "去过 1-2 次",
+    "frequent": "多次游览",
+}
+
+FITNESS_LABELS = {1: "很弱", 2: "较弱", 3: "一般", 4: "较好", 5: "很好"}
+
+PARK_NAMES = {
+    "shanghai_disney": "上海迪士尼乐园",
+    "hongkong_disney": "香港迪士尼乐园",
+}
+
+
+def _describe_party(planning: PlanningInfo) -> str:
+    adults = sum(1 for m in planning.party if m.type == "adult")
+    children = [m for m in planning.party if m.type == "child"]
+    elderly = sum(1 for m in planning.party if m.type == "elderly")
+    parts = []
+    if adults:
+        parts.append(f"{adults} 名成人")
+    if children:
+        ages = "、".join(str(c.age) for c in children if c.age)
+        parts.append(f"{len(children)} 名儿童" + (f"（{ages}岁）" if ages else ""))
+    if elderly:
+        parts.append(f"{elderly} 名老人")
+    return "、".join(parts) or "未指定"
+
+
+def build_system_prompt(
+    planning: PlanningInfo,
+    wait_times_json: str,
+    current_time: str,
+    completed_attractions: list[str],
+    current_location: dict | None,
+    strategy_snippets: list[str] | None = None,
+) -> str:
+    park_name = PARK_NAMES.get(planning.park_id, planning.park_id)
+    prefs = "、".join(PREFERENCE_LABELS.get(p, p) for p in planning.preferences) or "无特别偏好"
+    must_do = "、".join(planning.must_do_attractions) or "无"
+    fitness = FITNESS_LABELS.get(planning.fitness_level, "一般")
+    experience = EXPERIENCE_LABELS.get(planning.experience_level, "未知")
+    party_desc = _describe_party(planning)
+    completed_str = "、".join(completed_attractions) if completed_attractions else "无"
+    location_str = json.dumps(current_location, ensure_ascii=False) if current_location else "未知"
+
+    if strategy_snippets:
+        strategy_section = "\n".join(f"- {s}" for s in strategy_snippets[:5])
+    else:
+        strategy_section = "暂无攻略数据"
+
+    # Calculate remaining hours
+    try:
+        now = datetime.fromisoformat(current_time)
+        exit_dt = datetime.fromisoformat(f"{planning.visit_date}T{planning.exit_time}")
+        remaining_minutes = max(0, int((exit_dt - now).total_seconds() / 60))
+        remaining_str = f"{remaining_minutes // 60} 小时 {remaining_minutes % 60} 分钟"
+    except Exception:
+        remaining_str = "未知"
+
+    return f"""你是一个专业的迪士尼乐园游园助理，帮助游客规划最优游园路线，减少排队时间，提升游园体验。
+
+## 当前乐园信息
+乐园：{park_name}
+当前时间：{current_time}
+游园日期：{planning.visit_date}
+
+## 用户信息
+人员构成：{party_desc}
+游园时间：{planning.entry_time} - {planning.exit_time}（剩余约 {remaining_str}）
+兴趣偏好：{prefs}
+必玩项目：{must_do}
+体力水平：{fitness}（{planning.fitness_level}/5）
+游园经验：{experience}
+特殊需求：{planning.special_notes or "无"}
+
+## 当前实时排队数据（单位：分钟，null 表示关闭/未知）
+{wait_times_json}
+
+## 已完成项目
+{completed_str}
+
+## 当前位置
+{location_str}
+
+## 游客攻略参考（来自小红书，仅供参考）
+{strategy_section}
+
+## 规划原则
+1. 优先安排排队时间短的热门项目（开园前30分钟冲刺热门项目）
+2. 按地理位置聚类，减少无效步行，同一区域的项目连续安排
+3. 将高体力/刺激项目安排在上午，下午安排轻松项目
+4. 为餐饮预留时间（建议避开 12:00-13:00 高峰，选择 11:30 或 13:30）
+5. 必玩项目必须纳入规划，优先安排
+6. 考虑儿童/老人的体力限制和身高要求
+7. 关闭或故障的项目不纳入路线
+
+## 回复要求
+- 用中文回复，语气友好专业
+- 回复简洁，重点突出
+- 如果涉及路线规划，在回复末尾附上结构化路线（JSON格式，用 ```route 代码块包裹）：
+```route
+[{{"time": "09:00", "attraction_id": "attraction_id", "attraction_name": "项目名称", "estimated_wait": 30, "note": "备注", "type": "attraction"}}]
+```
+- type 字段可选值：attraction（游乐项目）、dining（餐饮）、show（表演）、break（休息）
+- 如果只是回答问题而不需要更新路线，则不需要附加 route 代码块"""
