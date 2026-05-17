@@ -1,5 +1,7 @@
 import json
 from datetime import datetime, timezone
+from functools import lru_cache
+from pathlib import Path
 
 import httpx
 
@@ -13,6 +15,25 @@ QUEUE_TIMES_PARK_IDS = {
 }
 
 QUEUE_TIMES_BASE = "https://queue-times.com/parks"
+
+_DATA_DIR = Path(__file__).parent.parent / "data"
+
+
+@lru_cache(maxsize=4)
+def _load_ride_id_to_name(park_id: str) -> dict[str, str]:
+    """Build a mapping of queue_times_ride_id → Chinese name from static JSON."""
+    data_file = _DATA_DIR / f"{park_id}.json"
+    if not data_file.exists():
+        return {}
+    try:
+        attractions = json.loads(data_file.read_text(encoding="utf-8"))
+        return {
+            str(a["queue_times_ride_id"]): a["name"]
+            for a in attractions
+            if a.get("queue_times_ride_id")
+        }
+    except Exception:
+        return {}
 
 
 async def fetch_wait_times(park_id: str) -> WaitTimesResponse:
@@ -46,13 +67,17 @@ async def fetch_wait_times(park_id: str) -> WaitTimesResponse:
     else:
         raw_rides = data.get("rides", [])
 
+    name_map = _load_ride_id_to_name(park_id)
+
     attractions: list[WaitTimeItem] = []
     for ride in raw_rides:
         is_open = ride.get("is_open", False)
         wait = ride.get("wait_time")
+        ride_id = str(ride.get("id", ""))
         attractions.append(
             WaitTimeItem(
-                attraction_id=str(ride.get("id", "")),
+                attraction_id=ride_id,
+                attraction_name=name_map.get(ride_id),
                 wait_minutes=int(wait) if wait is not None and is_open else None,
                 status="open" if is_open else "closed",
                 last_updated=now_iso,

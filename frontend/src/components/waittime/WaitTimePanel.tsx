@@ -64,7 +64,7 @@ export function WaitTimePanel() {
               .map((item) => (
                 <div key={item.attractionId} className="flex items-center justify-between px-4 py-3">
                   <span className="text-sm text-gray-700 flex-1 min-w-0 truncate pr-2">
-                    {item.attractionId}
+                    {item.attractionName ?? item.attractionId}
                   </span>
                   <Badge variant={waitBadgeVariant(item.status, item.waitMinutes)}>
                     {waitLabel(item.status, item.waitMinutes)}

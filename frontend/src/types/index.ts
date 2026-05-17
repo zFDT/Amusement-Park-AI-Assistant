@@ -38,6 +38,7 @@ export type WaitStatus = 'open' | 'closed' | 'down' | 'unknown'
 
 export interface WaitTimeData {
   attractionId: string
+  attractionName?: string
   waitMinutes: number | null
   status: WaitStatus
   lastUpdated: string

@@ -121,6 +121,7 @@ class ArchiveVisitResponse(BaseModel):
 
 class WaitTimeItem(BaseModel):
     attraction_id: str
+    attraction_name: str | None = None
     wait_minutes: int | None
     status: Literal["open", "closed", "down", "unknown"]
     last_updated: str
