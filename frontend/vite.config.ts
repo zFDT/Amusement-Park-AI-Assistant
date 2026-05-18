@@ -5,7 +5,7 @@ import path from 'path'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  const apiProxyTarget = env.VITE_API_PROXY_TARGET || 'http://localhost:8000'
+  const apiProxyTarget = env.VITE_API_PROXY_TARGET || 'http://localhost:8001'
 
   return {
     plugins: [react(), tailwindcss()],
