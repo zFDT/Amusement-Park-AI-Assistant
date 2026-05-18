@@ -63,8 +63,8 @@ def _profile_to_distill_config(profile: Any) -> dict[str, str]:
     api_mode = getattr(profile, "api_mode", "anthropic") or "anthropic"
     base_url = getattr(profile, "base_url", "") or ""
     # openai 模式但 base_url 指向 DeepSeek 时自动切换，避免传错模型名和图片格式
-    if api_mode == "openai" and "deepseek" in base_url.lower():
-        api_mode = "deepseek"
+    # if api_mode == "openai" and "deepseek" in base_url.lower():
+    #     api_mode = "deepseek"
     if api_mode not in SUPPORTED_DISTILL_API_MODES:
         api_mode = "anthropic"
     return {
