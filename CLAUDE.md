@@ -44,7 +44,10 @@ python -m scripts.strategy_collector.collect --park hongkong_disney --no-distill
 # 对已入库攻略补充 AI 提炼摘要（首次迁移后执行）
 python -m scripts.strategy_collector.redist --park hongkong_disney
 
-# 已有数据库迁移（新增 image_urls / ai_summary 字段）
+# 强制重新提炼所有攻略（覆盖已有摘要）
+python -m scripts.strategy_collector.redist --park hongkong_disney --force
+
+# 已有数据库迁移（新增 image_urls / ai_summary / structured_summary 字段）
 python -m scripts.migrate_strategy_fields
 ```
 
@@ -68,6 +71,7 @@ yarn build        # TypeScript 编译 + Vite 构建
   → POST /api/sessions        创建会话，生成初始路线（非流式）
   → POST /api/chat/stream     对话，SSE 流式返回 AI 回复 + 路线更新
   → GET  /api/waittimes/{id}  获取实时排队时间（Redis 缓存 5 分钟）
+  → GET  /api/strategies      获取攻略列表（支持 park/platform/q/limit/offset 过滤）
 ```
 
 ### 后端核心逻辑（`backend/app/`）
@@ -89,15 +93,15 @@ yarn build        # TypeScript 编译 + Vite 构建
 **数据库模型**（`models/park.py`）：
 - `Park` / `Attraction` / `Strategy` 三张表，用 SQLAlchemy async。
 - `Attraction.queue_times_ride_id` 是与 queue-times.com 数据关联的外键。
-- `Strategy` 额外字段：`image_urls`（JSON，图片 CDN URL 列表）、`ai_summary`（Text，Claude Haiku 提炼的摘要）。
+- `Strategy` 额外字段：`image_urls`（JSON，图片 CDN URL 列表）、`ai_summary`（Text，纯文本摘要，降级显示用）、`structured_summary`（JSON，AI 结构化提炼结果，含 `is_useful`/`mentioned_attractions`/`suggested_route`/`tips`/`summary`）。
 - Session 和消息历史**不入库**，只存 Redis。
 
 **攻略采集与提炼**（`scripts/strategy_collector/`）：
 
 - `collect.py`：DrissionPage 驱动 Chrome，从 `window.__INITIAL_STATE__` 提取搜索结果和详情（参考 xiaohongshu-mcp 方案，比 DOM 选择器更稳定）。采集完成后自动调用 AI 提炼。
-- `distill.py`：调用 Claude Haiku 视觉模型，分析笔记正文 + 图片（最多4张），生成100-150字实用摘要存入 `ai_summary`。
-- `redist.py`：对已入库但缺少摘要的攻略批量补充提炼。
-- `strategy_service.py`：注入 System Prompt 时优先使用 `ai_summary`，降级到原始正文截取。
+- `distill.py`：调用 Claude Haiku 视觉模型，分析笔记正文 + 图片（最多4张），输出结构化 JSON（`is_useful`、`mentioned_attractions`、`suggested_route`、`tips`、`summary`），同时写入 `ai_summary`（纯文本）和 `structured_summary`（JSON）两个字段。
+- `redist.py`：对已入库但缺少摘要的攻略批量补充提炼；`--force` 参数可强制重新提炼所有攻略。
+- `strategy_service.py`：注入 System Prompt 时优先使用 `structured_summary`（跳过 `is_useful=False` 的攻略，格式化路线和技巧），降级到 `ai_summary`，再降级到原始正文截取。
 
 **乐园静态数据**（`app/data/*.json`）：
 - `hongkong_disney.json` 和 `shanghai_disney.json` 是项目数据的权威来源，`init_db.py` 读取这两个文件导入数据库。
@@ -114,7 +118,7 @@ yarn build        # TypeScript 编译 + Vite 构建
 **SSE 客户端**（`services/sse.ts`）：
 - 手动解析 `text/event-stream`，将 `data:` 行解析为 `SSEChunk`（`text` / `route_update` / `done` / `error`）。
 
-**路由**：两个页面，`/`（`HomePage`：乐园选择 + 规划表单 + AI 配置面板）和 `/assistant`（`AssistantPage`：对话 + 排队时间 Tab 切换）。
+**路由**：三个页面，`/`（`HomePage`：乐园选择 + 规划表单 + AI 配置面板）、`/assistant`（`AssistantPage`：对话 + 排队时间 Tab 切换）、`/strategies`（`StrategiesPage`：攻略库列表 + 详情弹窗）。
 
 ### 前后端字段命名约定
 
@@ -127,7 +131,31 @@ yarn build        # TypeScript 编译 + Vite 构建
 | 变量 | 说明 |
 | --- | --- |
 | `ANTHROPIC_API_KEY` | 服务端默认 Key，用户未配置时使用，可留空 |
-| `DATABASE_URL` | 默认 `postgresql+asyncpg://youyuan:youyuan@localhost:5432/youyuan` |
+| `DATABASE_URL` | 默认 `postgresql+asyncpg://youyuan:youyuan@localhost:5432/youyuan`；多机开发可改为远程地址 |
 | `REDIS_URL` | 默认 `redis://localhost:6379` |
-| `CORS_ORIGINS` | 默认 `http://localhost:5173` |
+| `CORS_ORIGINS` | 默认 `["http://localhost:5173"]` |
 | `CLAUDE_MODEL` | 默认 `claude-sonnet-4-6` |
+| `AI_DEBUG_LOGGING` | `true` 时输出完整 AI 请求/响应到 `backend/logs/ai.log` |
+| `AI_INTERNAL_PROFILES` | JSON 数组，预置 AI 配置，格式：`[{"code":"vip666","api_mode":"anthropic","base_url":"...","api_key":"...","model_id":"..."}]` |
+| `AI_DISTILL_PROFILE_CODE` | 攻略提炼使用的内测码，对应 `AI_INTERNAL_PROFILES` 中的 `code` 字段 |
+
+## 日志
+
+后端启动时自动创建 `backend/logs/` 目录（已加入 `.gitignore`）：
+
+- `backend/logs/app.log`：应用运行日志，5MB 轮转，保留 5 份
+- `backend/logs/ai.log`：AI 交互完整日志（仅 `AI_DEBUG_LOGGING=true` 时写入详细内容）
+
+日志配置在 `backend/app/core/logging.py`，由 `main.py` 启动时调用 `configure_logging()` 初始化。
+
+## 数据库同步（多机开发）
+
+```powershell
+# 导出本地 + 上传到远程服务器恢复
+.\db\sync.ps1
+
+# 仅导出到 db/dump.sql
+.\db\sync.ps1 -DumpOnly
+```
+
+`db/upload_dump.py` 通过 paramiko SFTP 上传，再通过 SSH 执行 `docker cp` + `psql -f` 恢复。`dump.sql` 已加入 `.gitignore`。

@@ -1,6 +1,6 @@
 # 游园助理 - 技术设计文档
 
-**版本**: v1.1  
+**版本**: v1.2  
 **日期**: 2026-05-18
 
 ---
@@ -52,6 +52,9 @@
 ├── docs/                          # 文档
 │   ├── PRD.md
 │   └── technical-design.md
+├── db/                            # 数据库工具
+│   ├── sync.ps1                   # 本地→远程同步脚本
+│   └── upload_dump.py             # SFTP 上传 + 远程恢复
 ├── frontend/                      # React 前端
 │   ├── src/
 │   │   ├── components/
@@ -63,19 +66,18 @@
 │   │   │   ├── planning/          # 游前规划组件
 │   │   │   │   ├── PlanningForm.tsx
 │   │   │   │   └── PartySelector.tsx
-│   │   │   ├── map/               # 地图组件
-│   │   │   │   └── ParkMap.tsx
 │   │   │   └── waittime/          # 排队时间组件
 │   │   │       └── WaitTimePanel.tsx
 │   │   ├── pages/
 │   │   │   ├── HomePage.tsx       # 乐园选择 + 规划入口
-│   │   │   └── AssistantPage.tsx  # 主对话页面
+│   │   │   ├── AssistantPage.tsx  # 主对话页面
+│   │   │   └── StrategiesPage.tsx # 攻略库列表 + 详情弹窗
 │   │   ├── hooks/
 │   │   │   ├── useChat.ts         # 对话逻辑 hook
 │   │   │   ├── useWaitTimes.ts    # 排队时间轮询 hook
 │   │   │   └── useSession.ts      # Session 管理 hook
 │   │   ├── services/
-│   │   │   ├── api.ts             # API 请求封装
+│   │   │   ├── api.ts             # API 请求封装（含 camelCase↔snake_case 转换）
 │   │   │   └── sse.ts             # SSE 客户端封装
 │   │   ├── types/
 │   │   │   └── index.ts           # 全局类型定义
@@ -93,30 +95,35 @@
 │   │   │   └── routes/
 │   │   │       ├── chat.py        # 对话 API (SSE) + Session 管理
 │   │   │       ├── parks.py       # 乐园/项目数据 API
-│   │   │       └── waittimes.py   # 排队时间 API
+│   │   │       ├── waittimes.py   # 排队时间 API
+│   │   │       └── strategies.py  # 攻略列表 API
 │   │   ├── core/
 │   │   │   ├── config.py          # 配置管理
 │   │   │   ├── database.py        # 数据库连接
-│   │   │   └── redis_client.py    # Redis 连接
+│   │   │   ├── redis_client.py    # Redis 连接
+│   │   │   └── logging.py         # 日志配置（轮转文件 handler）
 │   │   ├── models/
 │   │   │   └── park.py            # Park / Attraction / Strategy 模型
 │   │   ├── schemas/
 │   │   │   └── *.py               # Pydantic 请求/响应模型
 │   │   ├── services/
-│   │   │   ├── ai_service.py      # Claude API 调用
+│   │   │   ├── ai_service.py      # 多协议 AI 调用（Anthropic/OpenAI/Gemini/Ollama）
 │   │   │   ├── waittime_service.py # queue-times.com 集成
 │   │   │   ├── prompt_builder.py  # System Prompt 构建
-│   │   │   └── strategy_service.py # 攻略摘要注入
+│   │   │   └── strategy_service.py # 攻略摘要注入（结构化优先）
 │   │   └── data/
 │   │       ├── shanghai_disney.json
 │   │       └── hongkong_disney.json
+│   ├── logs/                      # 运行日志（自动创建，已 gitignore）
+│   │   ├── app.log
+│   │   └── ai.log
 │   ├── scripts/
 │   │   ├── init_db.py             # 数据库初始化
 │   │   ├── migrate_strategy_fields.py  # 字段迁移
 │   │   └── strategy_collector/
 │   │       ├── collect.py         # 采集主程序
-│   │       ├── distill.py         # AI 视觉提炼
-│   │       └── redist.py          # 补充提炼
+│   │       ├── distill.py         # AI 视觉提炼（结构化 JSON 输出）
+│   │       └── redist.py          # 补充提炼（支持 --force）
 │   ├── main.py
 │   ├── requirements.txt
 │   └── .env.example
@@ -217,6 +224,51 @@ Response:
 **GET /api/parks/{park_id}/attractions**
 
 获取乐园项目静态数据（含坐标、分类等）
+
+---
+
+**GET /api/strategies**
+
+获取攻略列表，支持过滤和分页。
+
+Query Params:
+```
+park    string   乐园 ID（如 hongkong_disney）
+platform string  平台（如 xhs）
+q       string   关键词搜索（标题/正文）
+limit   int      每页数量（默认 20）
+offset  int      偏移量（默认 0）
+```
+
+Response:
+```json
+{
+  "total": 42,
+  "items": [
+    {
+      "id": "abc123",
+      "park_id": "hongkong_disney",
+      "platform": "xhs",
+      "source_url": "https://...",
+      "title": "香港迪士尼攻略",
+      "content": "...",
+      "author": "小红书用户",
+      "likes": 1200,
+      "collects": 300,
+      "image_urls": ["https://..."],
+      "ai_summary": "...",
+      "structured_summary": {
+        "is_useful": true,
+        "mentioned_attractions": ["飞越太空山", "迷离庄园"],
+        "suggested_route": "开园先冲飞越太空山...",
+        "tips": "建议购买闪电通行证...",
+        "summary": "..."
+      },
+      "collected_at": "2026-05-18T10:00:00"
+    }
+  ]
+}
+```
 
 ---
 
@@ -328,7 +380,8 @@ Response:
 | `tags` | JSON | 关键词标签 |
 | `mentioned_attractions` | JSON | 文中提及的项目名称 |
 | `image_urls` | JSON | 图片 CDN URL 列表 |
-| `ai_summary` | Text | Claude Haiku 提炼的摘要（100-150字） |
+| `ai_summary` | Text | 纯文本摘要（降级显示用） |
+| `structured_summary` | JSON | AI 结构化提炼结果（`is_useful`/`mentioned_attractions`/`suggested_route`/`tips`/`summary`） |
 | `collected_at` | DateTime | 采集时间 |
 | `is_active` | Boolean | 是否启用 |
 
@@ -344,12 +397,21 @@ DrissionPage (Chrome)
 
 Claude Haiku（视觉模型）
   → 输入：笔记标题 + 正文 + 图片（最多4张，base64）
-  → 输出：100-150字实用摘要（游玩顺序、排队技巧、餐饮建议等）
-  → 写入 ai_summary 字段
+  → 输出：结构化 JSON
+      {
+        "is_useful": true,
+        "mentioned_attractions": ["飞越太空山"],
+        "suggested_route": "开园先冲飞越太空山...",
+        "tips": "建议购买闪电通行证...",
+        "summary": "100字以内整体摘要"
+      }
+  → 写入 structured_summary 字段（JSON）
+  → 同时将 summary 写入 ai_summary 字段（纯文本，降级用）
 
 System Prompt 注入
   → strategy_service.get_strategy_snippets()
-  → 优先使用 ai_summary，降级到 content[:200]
+  → 优先使用 structured_summary（跳过 is_useful=False，格式化路线+技巧）
+  → 降级到 ai_summary，再降级到 content[:200]
   → 取点赞数最高的5条注入上下文
 ```
 
@@ -417,16 +479,28 @@ docker-compose up postgres redis
 ```env
 # backend/.env
 ANTHROPIC_API_KEY=sk-ant-...
-DATABASE_URL=postgresql://user:pass@localhost:5432/youyuan
+DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/youyuan
 REDIS_URL=redis://localhost:6379
-QUEUE_TIMES_API_KEY=  # queue-times.com 免费版无需 key
 CORS_ORIGINS=["http://localhost:5173"]
-AI_INTERNAL_PROFILES=[]
-AI_DISTILL_PROFILE_CODE=
 AI_DEBUG_LOGGING=false
 
-# 可选
+# 内测码模式预置 AI 配置（JSON 数组）
+AI_INTERNAL_PROFILES=[{"code":"vip666","api_mode":"anthropic","base_url":"...","api_key":"...","model_id":"claude-sonnet-4-6"}]
+# 攻略提炼使用的内测码
+AI_DISTILL_PROFILE_CODE=vip666
 ```
+
+| 变量 | 说明 |
+| --- | --- |
+| `ANTHROPIC_API_KEY` | 服务端默认 Key，用户未配置时使用，可留空 |
+| `DATABASE_URL` | 支持本地 Docker（`localhost:5432`）或远程服务器 |
+| `REDIS_URL` | Session 和排队缓存 |
+| `CORS_ORIGINS` | 允许的前端来源 |
+| `AI_DEBUG_LOGGING` | `true` 时将完整 AI 上下文写入 `backend/logs/ai.log` |
+| `AI_INTERNAL_PROFILES` | 预置 AI 配置数组，支持多协议（anthropic/openai/gemini/ollama） |
+| `AI_DISTILL_PROFILE_CODE` | 攻略提炼脚本使用的配置 code |
+
+---
 
 ## 八、AI 协议支持
 
@@ -441,14 +515,37 @@ AI_DEBUG_LOGGING=false
 
 后端会根据 `apiMode` 选择对应的请求协议与流式解析方式；若 `source=internal`，则从 `AI_INTERNAL_PROFILES` 中按 `code` 匹配配置。
 
-### 九、AI 调试日志
+### 九、日志系统
 
-当 `AI_DEBUG_LOGGING=true` 时，后端会在 `app.ai` 日志中输出：
+后端启动时调用 `configure_logging()`（`app/core/logging.py`），注册两个轮转文件 handler：
 
-- 请求上下文（planning、wait times、completed attractions、current location）
+| 文件 | Logger | 内容 | 轮转策略 |
+| --- | --- | --- | --- |
+| `backend/logs/app.log` | root | 应用运行日志 | 5MB，保留 5 份 |
+| `backend/logs/ai.log` | `app.ai` | AI 交互完整日志 | 5MB，保留 5 份 |
+
+当 `AI_DEBUG_LOGGING=true` 时，`app.ai` logger 会输出：
+
+- 请求上下文（planning info、wait times、completed attractions、current location）
 - 完整 `system_prompt`
-- 发送给模型的请求 payload
+- 发送给模型的请求 payload（`Authorization`/`x-api-key` header 已脱敏）
 - 流式返回的每个 chunk
 - 最终完整响应文本与解析出的路线 JSON
 
-为了避免泄露密钥，日志中会对 `Authorization` / `x-api-key` 之类的 header 做脱敏。
+### 十、多机数据库同步
+
+单开发者多机场景下，可通过以下方式共享数据库：
+
+**方案 A（推荐）**：直接使用远程 PostgreSQL，将 `DATABASE_URL` 改为远程地址，无需本地 Docker PostgreSQL。
+
+**方案 B**：本地开发，按需同步：
+
+```powershell
+# 导出本地 + 上传到远程服务器恢复
+.\db\sync.ps1
+
+# 仅导出到 db/dump.sql（不上传）
+.\db\sync.ps1 -DumpOnly
+```
+
+`db/upload_dump.py` 通过 paramiko SFTP 上传 dump 文件，再通过 SSH 执行 `docker cp` + `psql -f` 恢复。`dump.sql` 已加入 `.gitignore`。

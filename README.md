@@ -118,7 +118,7 @@ pip install DrissionPage
 **首次使用（已有数据库需先迁移）**：
 
 ```bash
-# 为 strategies 表添加 image_urls / ai_summary 字段
+# 为 strategies 表添加 image_urls / ai_summary / structured_summary 字段
 python -m scripts.migrate_strategy_fields
 ```
 
@@ -140,16 +140,49 @@ python -m scripts.strategy_collector.collect --park hongkong_disney --no-distill
 
 # 对已入库但缺少摘要的攻略补充 AI 提炼
 python -m scripts.strategy_collector.redist --park hongkong_disney
+
+# 强制重新提炼所有攻略（覆盖已有摘要）
+python -m scripts.strategy_collector.redist --park hongkong_disney --force
 ```
 
 **说明**：
 
 - 采集器会获取笔记正文 + 全部图片 URL + 点赞/收藏/评论数
+- AI 提炼会输出结构化 JSON（`is_useful`、`mentioned_attractions`、`suggested_route`、`tips`、`summary`），存入 `structured_summary` 字段；同时保留纯文本摘要到 `ai_summary` 字段作为降级显示
 - 采集阶段的 AI 配置在 `backend/.env` 里，建议使用 `AI_INTERNAL_PROFILES` + `AI_DISTILL_PROFILE_CODE` 来定义（例如 `api_mode="openai"` + `base_url="https://api.openai.com/v1"` + `api_key` + `model_id`）
 - 如果你加了 `AI_DEBUG_LOGGING=true`，会打印完整 AI 上下文日志，便于核对
 - AI 提炼支持从 `AI_INTERNAL_PROFILES` 读取多协议配置；也兼容旧版 `ANTHROPIC_API_KEY` 作为兜底
 - 摘要注入 AI 上下文时比原始正文截取更精准，显著提升路线规划质量
 - 建议管理员定期执行（每周一次），无需用户触发
+
+---
+
+## 多机开发数据库同步
+
+如果你在多台机器上开发，可以使用共享远程 PostgreSQL 实例，或通过以下脚本手动同步：
+
+```powershell
+# 导出本地数据库 + 上传到远程服务器并恢复
+.\db\sync.ps1
+
+# 仅导出到 db/dump.sql（不上传）
+.\db\sync.ps1 -DumpOnly
+```
+
+`db/sync.ps1` 会将本地 Docker 容器中的数据库导出为 `db/dump.sql`，再通过 SFTP 上传到远程服务器并恢复。`dump.sql` 已加入 `.gitignore`，不会提交到仓库。
+
+> 如果直接使用远程数据库，只需将 `backend/.env` 中的 `DATABASE_URL` 改为远程地址即可，无需本地 Docker PostgreSQL。
+
+---
+
+## AI 日志查阅
+
+后端运行时会将日志写入 `backend/logs/`（自动创建，已加入 `.gitignore`）：
+
+- `backend/logs/app.log`：应用运行日志（5MB 轮转，保留 5 份）
+- `backend/logs/ai.log`：AI 交互完整日志（含 system prompt、请求 payload、流式 chunk、最终响应）
+
+开启完整 AI 日志：在 `backend/.env` 中设置 `AI_DEBUG_LOGGING=true`，重启后端即生效。
 
 ---
 
@@ -194,22 +227,28 @@ python -m scripts.strategy_collector.redist --park hongkong_disney
 │   ├── technical-design.md  # 技术设计文档
 │   ├── roadmap.md           # 后续规划
 │   └── deployment.md        # 部署指南
+├── db/                      # 数据库工具
+│   ├── sync.ps1             # 本地→远程数据库同步脚本
+│   └── upload_dump.py       # SFTP 上传 + 远程恢复脚本
 ├── frontend/                # React 18 + TypeScript 前端
 ├── backend/                 # Python FastAPI 后端
 │   ├── app/
 │   │   ├── api/routes/      # API 路由
-│   │   ├── core/            # 配置、数据库、Redis
+│   │   ├── core/            # 配置、数据库、Redis、日志
 │   │   ├── data/            # 乐园静态数据 JSON
 │   │   ├── models/          # SQLAlchemy 数据库模型
 │   │   ├── schemas/         # Pydantic 请求/响应模型
 │   │   └── services/        # AI、排队数据、攻略服务
+│   ├── logs/                # 运行日志（自动创建，已 gitignore）
+│   │   ├── app.log          # 应用日志（5MB 轮转，5份备份）
+│   │   └── ai.log           # AI 交互完整日志
 │   └── scripts/
 │       ├── init_db.py               # 数据库初始化
-│       ├── migrate_strategy_fields.py  # 字段迁移（新增 image_urls/ai_summary）
+│       ├── migrate_strategy_fields.py  # 字段迁移（新增 image_urls/ai_summary/structured_summary）
 │       └── strategy_collector/      # 小红书攻略采集器
 │           ├── collect.py           # 采集主程序（__INITIAL_STATE__ 方案）
-│           ├── distill.py           # Claude Haiku 视觉提炼模块
-│           └── redist.py            # 已入库攻略补充提炼
+│           ├── distill.py           # Claude Haiku 视觉提炼模块（输出结构化 JSON）
+│           └── redist.py            # 已入库攻略补充提炼（支持 --force）
 └── docker-compose.yml       # 本地开发数据库
 ```
 
