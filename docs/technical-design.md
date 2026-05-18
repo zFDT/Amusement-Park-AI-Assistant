@@ -116,7 +116,8 @@
 │   │       └── hongkong_disney.json
 │   ├── logs/                      # 运行日志（自动创建，已 gitignore）
 │   │   ├── app.log
-│   │   └── ai.log
+│   │   ├── ai.log
+│   │   └── access.log
 │   ├── scripts/
 │   │   ├── init_db.py             # 数据库初始化
 │   │   ├── migrate_strategy_fields.py  # 字段迁移
@@ -517,12 +518,13 @@ AI_DISTILL_PROFILE_CODE=vip666
 
 ### 九、日志系统
 
-后端启动时调用 `configure_logging()`（`app/core/logging.py`），注册两个轮转文件 handler：
+后端启动时调用 `configure_logging()`（`app/core/logging.py`），注册三个轮转文件 handler：
 
 | 文件 | Logger | 内容 | 轮转策略 |
 | --- | --- | --- | --- |
-| `backend/logs/app.log` | root | 应用运行日志 | 5MB，保留 5 份 |
-| `backend/logs/ai.log` | `app.ai` | AI 交互完整日志 | 5MB，保留 5 份 |
+| `backend/logs/app.log` | root | 应用运行日志（含 uvicorn 启动/错误） | 5MB，保留 5 份 |
+| `backend/logs/ai.log` | `app.ai` | AI 交互完整日志（含提炼脚本） | 5MB，保留 5 份 |
+| `backend/logs/access.log` | `uvicorn.access` | 前后端 HTTP 交互请求记录（路径、状态码、耗时） | 5MB，保留 5 份 |
 
 当 `AI_DEBUG_LOGGING=true` 时，`app.ai` logger 会输出：
 
