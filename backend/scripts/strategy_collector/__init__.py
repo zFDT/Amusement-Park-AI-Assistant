@@ -1,3 +1,1 @@
-from scripts.strategy_collector.collect import collect
-
-__all__ = ["collect"]
+"""小红书攻略采集器相关脚本包。"""

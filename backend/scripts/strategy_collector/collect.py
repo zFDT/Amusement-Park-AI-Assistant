@@ -86,15 +86,27 @@ def create_browser() -> "ChromiumPage":
     return ChromiumPage(co)
 
 
-def wait_for_login(page: "ChromiumPage") -> None:
+def wait_for_login(page: "ChromiumPage", force: bool = False) -> None:
     page.get("https://www.xiaohongshu.com")
     time.sleep(3)
     avatar = page.ele("css:.user-avatar", timeout=3) or page.ele("css:[class*='avatar']", timeout=2)
-    if avatar:
+    if avatar and not force:
         logger.info("XHS: 已登录（复用上次 session）")
         return
-    logger.info("XHS: 需要登录，请在浏览器中完成登录")
+
+    if force:
+        logger.info("XHS: 已进入专门登录模式，请在浏览器中完成登录")
+    else:
+        logger.info("XHS: 需要登录，请在浏览器中完成登录")
+
     input(">>> 小红书登录完成后，按回车继续...")
+
+    # 回车后再做一次轻量校验，便于确认登录态是否真的生效
+    avatar = page.ele("css:.user-avatar", timeout=3) or page.ele("css:[class*='avatar']", timeout=2)
+    if avatar:
+        logger.info("XHS: 已确认登录态")
+    else:
+        logger.warning("XHS: 未检测到明确登录态，但将继续尝试采集（如仍无结果，可重新登录）")
 
 
 def _parse_count(text: str) -> int:
@@ -341,6 +353,8 @@ async def collect(
     park_id: str = "hongkong_disney",
     limit_per_keyword: int = 20,
     enable_distill: bool = True,
+    force_login: bool = False,
+    login_only: bool = False,
 ):
     if not DRISSION_AVAILABLE:
         logger.error("DrissionPage 未安装，无法运行采集器")
@@ -355,7 +369,11 @@ async def collect(
     page = create_browser()
 
     try:
-        wait_for_login(page)
+        wait_for_login(page, force=force_login or login_only)
+
+        if login_only:
+            logger.info("XHS: 登录模式完成，按需退出采集器")
+            return
 
         all_items: list[dict] = []
         seen_urls: set[str] = set()
@@ -392,10 +410,14 @@ if __name__ == "__main__":
     parser.add_argument("--park", default="hongkong_disney", choices=list(PARK_KEYWORDS.keys()))
     parser.add_argument("--limit", type=int, default=20, help="每个关键词采集数量")
     parser.add_argument("--no-distill", action="store_true", help="跳过 AI 提炼步骤")
+    parser.add_argument("--force-login", action="store_true", help="忽略已保存登录态，强制重新登录")
+    parser.add_argument("--login-only", action="store_true", help="仅执行登录，不开始采集")
     args = parser.parse_args()
 
     asyncio.run(collect(
         park_id=args.park,
         limit_per_keyword=args.limit,
         enable_distill=not args.no_distill,
+        force_login=args.force_login,
+        login_only=args.login_only,
     ))

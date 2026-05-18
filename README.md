@@ -124,9 +124,15 @@ python -m scripts.migrate_strategy_fields
 **采集攻略**：
 
 ```bash
+# 先单独登录小红书（推荐：登录成功后再进行采集）
+python -m scripts.strategy_collector.login
+
 # 采集香港迪士尼攻略（会弹出 Chrome 窗口，首次需手动登录小红书）
 # 采集完成后自动调用 Claude Haiku 对图文内容进行 AI 提炼
 python -m scripts.strategy_collector.collect --park hongkong_disney --limit 20
+
+# 如果怀疑登录态失效，可强制重新登录后再采集
+python -m scripts.strategy_collector.collect --park hongkong_disney --force-login
 
 # 跳过 AI 提炼（节省 API 费用，适合批量采集后统一处理）
 python -m scripts.strategy_collector.collect --park hongkong_disney --no-distill
@@ -138,6 +144,7 @@ python -m scripts.strategy_collector.redist --park hongkong_disney
 **说明**：
 
 - 采集器会获取笔记正文 + 全部图片 URL + 点赞/收藏/评论数
+- 采集阶段的 AI 配置在 `backend/.env` 里，当前主要使用 `ANTHROPIC_API_KEY`；如果你加了 `AI_DEBUG_LOGGING=true`，会打印完整 AI 上下文日志，便于核对
 - AI 提炼使用 Claude Haiku 视觉模型，分析图文内容生成100-150字实用摘要
 - 摘要注入 AI 上下文时比原始正文截取更精准，显著提升路线规划质量
 - 建议管理员定期执行（每周一次），无需用户触发
@@ -178,7 +185,7 @@ python -m scripts.strategy_collector.redist --park hongkong_disney
 
 ## 项目结构
 
-```
+```text
 游园助理/
 ├── docs/                    # 文档
 │   ├── PRD.md               # 产品需求文档
