@@ -82,6 +82,8 @@ yarn build        # TypeScript 编译 + Vite 构建
 
 **AI 客户端**（`services/ai_service.py`）：
 - 支持 per-request AI 配置（`AIConfig`：`source` + `api_key` + `base_url` + `api_mode` + `model_id`，兼容旧字段 `auth_token` / `model`），并支持 `source=internal` 从 `AI_INTERNAL_PROFILES` 中按内测码读取预置配置。
+- 支持的 `api_mode`：`deepseek`（推荐，OpenAI 兼容格式，默认模型 `deepseek-v4-flash`）、`openai`、`openai-responses`、`anthropic`、`gemini`、`ollama`。
+- DeepSeek 特性：`reasoner` / `v4-pro` 模型自动注入 `"thinking": {"type": "enabled"}` 开启思考模式；流式响应只取 `delta.content`，跳过 `reasoning_content`（思考过程不展示给用户）。
 
 **System Prompt 构建**（`services/prompt_builder.py`）：
 - `build_system_prompt()` 将用户规划信息、实时排队 JSON、已完成项目、当前位置、攻略摘要（最多 5 条）拼装成完整 System Prompt，每次对话都重新构建。
@@ -99,7 +101,7 @@ yarn build        # TypeScript 编译 + Vite 构建
 **攻略采集与提炼**（`scripts/strategy_collector/`）：
 
 - `collect.py`：DrissionPage 驱动 Chrome，从 `window.__INITIAL_STATE__` 提取搜索结果和详情（参考 xiaohongshu-mcp 方案，比 DOM 选择器更稳定）。采集完成后自动调用 AI 提炼。
-- `distill.py`：调用 Claude Haiku 视觉模型，分析笔记正文 + 图片（最多4张），输出结构化 JSON（`is_useful`、`mentioned_attractions`、`suggested_route`、`tips`、`summary`），同时写入 `ai_summary`（纯文本）和 `structured_summary`（JSON）两个字段。
+- `distill.py`：调用视觉模型（支持 anthropic/openai/gemini/deepseek），分析笔记正文 + 图片（最多4张，deepseek 仅文本），输出结构化 JSON（`is_useful`、`mentioned_attractions`、`suggested_route`、`tips`、`summary`），同时写入 `ai_summary`（纯文本）和 `structured_summary`（JSON）两个字段。使用 httpx 直接调用，不依赖 anthropic SDK。
 - `redist.py`：对已入库但缺少摘要的攻略批量补充提炼；`--force` 参数可强制重新提炼所有攻略。
 - `strategy_service.py`：注入 System Prompt 时优先使用 `structured_summary`（跳过 `is_useful=False` 的攻略，格式化路线和技巧），降级到 `ai_summary`，再降级到原始正文截取。
 
@@ -136,7 +138,7 @@ yarn build        # TypeScript 编译 + Vite 构建
 | `CORS_ORIGINS` | 默认 `["http://localhost:5173"]` |
 | `CLAUDE_MODEL` | 默认 `claude-sonnet-4-6` |
 | `AI_DEBUG_LOGGING` | `true` 时输出完整 AI 请求/响应到 `backend/logs/ai.log` |
-| `AI_INTERNAL_PROFILES` | JSON 数组，预置 AI 配置，格式：`[{"code":"vip666","api_mode":"anthropic","base_url":"...","api_key":"...","model_id":"..."}]` |
+| `AI_INTERNAL_PROFILES` | JSON 数组，预置 AI 配置，格式：`[{"code":"vip666","api_mode":"deepseek","base_url":"...","api_key":"...","model_id":"deepseek-v4-flash"}]`；`api_mode` 支持 `deepseek`/`anthropic`/`openai`/`gemini`/`ollama` |
 | `AI_DISTILL_PROFILE_CODE` | 攻略提炼使用的内测码，对应 `AI_INTERNAL_PROFILES` 中的 `code` 字段 |
 
 ## 日志

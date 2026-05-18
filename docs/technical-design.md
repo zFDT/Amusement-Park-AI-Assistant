@@ -23,8 +23,8 @@
 │  └──────┬──────┘  └──────┬───────┘  └─────┬──────┘  │
 │         │                │                │          │
 │  ┌──────▼──────┐  ┌──────▼───────┐  ┌─────▼──────┐  │
-│  │ Claude API  │  │queue-times   │  │ PostgreSQL  │  │
-│  │ (Anthropic) │  │    .com API  │  │  + Redis   │  │
+│  │ AI API      │  │queue-times   │  │ PostgreSQL  │  │
+│  │(DeepSeek等) │  │    .com API  │  │  + Redis   │  │
 │  └─────────────┘  └──────────────┘  └────────────┘  │
 └─────────────────────────────────────────────────────┘
 ```
@@ -39,7 +39,7 @@
 | 后端框架 | Python FastAPI | 原生异步，SSE 支持好，AI/数据处理生态丰富 |
 | 数据库 | PostgreSQL | 结构化数据，支持 JSON 字段 |
 | 缓存 | Redis | 排队时间缓存，Session 存储 |
-| AI 模型 | Claude claude-sonnet-4-6 (Anthropic) | 推理能力强，支持流式输出，中文效果好 |
+| AI 模型 | DeepSeek / Claude / OpenAI / Gemini / Ollama | 多模型支持，默认 DeepSeek V4 Flash，兼容 OpenAI 格式 |
 | 实时排队数据 | queue-times.com API | 免费，覆盖上海/香港迪士尼 |
 | 流式通信 | Server-Sent Events (SSE) | 单向流式，比 WebSocket 更轻量，适合 AI 输出 |
 
@@ -107,7 +107,7 @@
 │   │   ├── schemas/
 │   │   │   └── *.py               # Pydantic 请求/响应模型
 │   │   ├── services/
-│   │   │   ├── ai_service.py      # 多协议 AI 调用（Anthropic/OpenAI/Gemini/Ollama）
+│   │   │   ├── ai_service.py      # 多协议 AI 调用（DeepSeek/Anthropic/OpenAI/Gemini/Ollama）
 │   │   │   ├── waittime_service.py # queue-times.com 集成
 │   │   │   ├── prompt_builder.py  # System Prompt 构建
 │   │   │   └── strategy_service.py # 攻略摘要注入（结构化优先）
