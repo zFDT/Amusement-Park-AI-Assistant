@@ -147,6 +147,7 @@ yarn build        # TypeScript 编译 + Vite 构建
 
 - `backend/logs/app.log`：应用运行日志，5MB 轮转，保留 5 份
 - `backend/logs/ai.log`：AI 交互完整日志（仅 `AI_DEBUG_LOGGING=true` 时写入详细内容）
+- `backend/logs/access.log`：前后端 HTTP 交互请求记录（路径、状态码、耗时），5MB 轮转，保留 5 份
 
 日志配置在 `backend/app/core/logging.py`，由 `main.py` 启动时调用 `configure_logging()` 初始化。
 
