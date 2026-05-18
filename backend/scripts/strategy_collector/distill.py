@@ -56,7 +56,7 @@ _XHS_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
 }
 
-SUPPORTED_DISTILL_API_MODES = {"openai", "openai-responses", "anthropic", "gemini"}
+SUPPORTED_DISTILL_API_MODES = {"openai", "openai-responses", "anthropic", "gemini", "deepseek"}
 
 
 def _profile_to_distill_config(profile: Any) -> dict[str, str]:
@@ -231,6 +231,25 @@ async def distill_strategy(
                 data = response.json()
                 raw_text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
                 logger.info("[distill] response %s", json.dumps({"provider": api_mode, "status_code": response.status_code, "raw": raw_text}, ensure_ascii=False))
+        elif api_mode == "deepseek":
+            # DeepSeek 不支持图片输入，只传文本
+            url = f"{(base_url or 'https://api.deepseek.com').rstrip('/')}/chat/completions"
+            payload = {
+                "model": model or "deepseek-v4-flash",
+                "max_tokens": 500,
+                "messages": [
+                    {"role": "system", "content": _SYSTEM},
+                    {"role": "user", "content": [{"type": "text", "text": text_body}]},
+                ],
+                "response_format": {"type": "json_object"},
+            }
+            logger.info("[distill] request %s", json.dumps({"provider": "deepseek", "url": url, "model": model, "title": title}, ensure_ascii=False))
+            async with httpx.AsyncClient(timeout=60) as client:
+                response = await client.post(url, json=payload, headers={"Authorization": f"Bearer {api_key}"})
+                response.raise_for_status()
+                data = response.json()
+                raw_text = data["choices"][0]["message"]["content"].strip()
+                logger.info("[distill] response %s", json.dumps({"provider": "deepseek", "status_code": response.status_code, "raw": raw_text[:200]}, ensure_ascii=False))
         else:
             base = (base_url or "https://api.anthropic.com").rstrip("/")
             url = f"{base}/v1/messages"

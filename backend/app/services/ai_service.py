@@ -20,6 +20,7 @@ API_MODE_DEFAULTS = {
     "ollama": ("http://localhost:11434", "llama3.1"),
     "anthropic": ("https://api.anthropic.com", settings.claude_model),
     "gemini": ("https://generativelanguage.googleapis.com/v1beta", "gemini-2.5-pro"),
+    "deepseek": ("https://api.deepseek.com", "deepseek-v4-flash"),
 }
 
 SUPPORTED_API_MODES = set(API_MODE_DEFAULTS.keys())
@@ -108,6 +109,8 @@ def _infer_api_mode(ai_config: AIConfig | None, base_url: str | None = None) -> 
             (ai_config.model if ai_config and ai_config.model else ""),
         ]
     ).lower()
+    if "deepseek" in raw:
+        return "deepseek"
     if "anthropic" in raw or "claude" in raw:
         return "anthropic"
     if "googleapis" in raw or "gemini" in raw:
@@ -196,6 +199,20 @@ def _build_payload(system_prompt: str, messages: list[dict], runtime: dict[str, 
         headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
         return url, payload, headers
 
+    if api_mode == "deepseek":
+        url = f"{base_url}/chat/completions"
+        payload = {
+            "model": model_id,
+            "messages": [{"role": "system", "content": system_prompt}, *_normalize_messages(messages, "openai")],
+            "stream": stream,
+            "max_tokens": 4096,
+        }
+        # 思考模式：reasoner 或 v4-pro 模型启用
+        if any(k in model_id.lower() for k in ("reasoner", "v4-pro")):
+            payload["thinking"] = {"type": "enabled"}
+        headers = {"Authorization": f"Bearer {api_key}"}
+        return url, payload, headers
+
     url = f"{base_url}/chat/completions"
     payload = {
         "model": model_id,
@@ -235,6 +252,14 @@ def _extract_text_from_payload(api_mode: str, payload: dict) -> str:
                 for block in content:
                     if "text" in block:
                         return block.get("text", "")
+        return ""
+
+    if api_mode == "deepseek":
+        choices = payload.get("choices") or []
+        if choices:
+            delta = choices[0].get("delta") or {}
+            # 只取 content，跳过 reasoning_content（思考过程不展示给用户）
+            return delta.get("content") or ""
         return ""
 
     choices = payload.get("choices") or []

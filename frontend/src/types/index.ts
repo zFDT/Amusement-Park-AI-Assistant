@@ -115,7 +115,7 @@ export interface Location {
   label?: string
 }
 
-export type APIMode = 'openai' | 'openai-responses' | 'ollama' | 'anthropic' | 'gemini'
+export type APIMode = 'openai' | 'openai-responses' | 'ollama' | 'anthropic' | 'gemini' | 'deepseek'
 export type AIConfigSource = 'custom' | 'internal'
 
 export interface AIConfig {

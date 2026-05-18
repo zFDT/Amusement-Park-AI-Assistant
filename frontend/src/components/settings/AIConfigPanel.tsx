@@ -5,7 +5,7 @@ import type { AIConfig, APIMode } from '@/types'
 import { API_MODE_HELPERS, inferAPIConfigMode, normalizeAIConfig } from '@/services/aiConfig'
 
 const PROVIDER_PRESETS: Record<string, { label: string; baseUrl: string; apiMode: APIMode; modelId: string }> = {
-  deepseek: { label: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', apiMode: 'openai', modelId: 'deepseek-chat' },
+  deepseek: { label: 'DeepSeek', baseUrl: 'https://api.deepseek.com', apiMode: 'deepseek', modelId: 'deepseek-v4-flash' },
   qwen: { label: 'Qwen', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', apiMode: 'openai', modelId: 'qwen-plus' },
   openai: { label: 'OpenAI (GPT)', baseUrl: 'https://api.openai.com/v1', apiMode: 'openai', modelId: 'gpt-4.1-mini' },
   claude: { label: 'Claude', baseUrl: 'https://api.anthropic.com', apiMode: 'anthropic', modelId: 'claude-sonnet-4-6' },
@@ -21,6 +21,7 @@ const API_MODE_OPTIONS: { value: APIMode; label: string }[] = [
   { value: 'ollama', label: 'ollama' },
   { value: 'anthropic', label: 'anthropic' },
   { value: 'gemini', label: 'gemini' },
+  { value: 'deepseek', label: 'deepseek' },
 ]
 
 const EMPTY_CONFIG: AIConfig = {

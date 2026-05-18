@@ -2,7 +2,7 @@ from pydantic import BaseModel
 from typing import Literal
 
 
-APIMode = Literal["openai", "openai-responses", "ollama", "anthropic", "gemini"]
+APIMode = Literal["openai", "openai-responses", "ollama", "anthropic", "gemini", "deepseek"]
 AIConfigSource = Literal["custom", "internal"]
 
 

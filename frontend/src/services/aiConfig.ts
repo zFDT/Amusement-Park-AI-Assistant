@@ -15,6 +15,7 @@ export const API_MODE_HELPERS: Record<APIMode, string> = {
   ollama: 'Ollama 原生聊天接口：/api/chat',
   anthropic: 'Anthropic Messages API：/v1/messages',
   gemini: 'Gemini SSE 接口：/v1beta/models/{model}:streamGenerateContent?alt=sse',
+  deepseek: 'DeepSeek 兼容 OpenAI 聊天接口：/chat/completions（支持思考模式）',
 }
 
 export function inferAPIConfigMode(aiConfig?: AIConfig | null): APIMode {
