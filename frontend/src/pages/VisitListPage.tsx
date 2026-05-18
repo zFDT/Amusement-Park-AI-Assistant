@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, ChevronRight, Archive, LogOut, CheckCircle2, Clock } from 'lucide-react'
+import { Plus, ChevronRight, Archive, LogOut, CheckCircle2, Clock, BookOpen } from 'lucide-react'
 import { useAppStore } from '@/store/sessionStore'
 import { getVisits, archiveVisit } from '@/services/api'
 import type { VisitSummary } from '@/services/api'
@@ -105,13 +105,22 @@ export function VisitListPage() {
             <h1 className="text-base font-bold text-gray-900">我的游园</h1>
             <p className="text-xs text-gray-400 mt-0.5">{userId}</p>
           </div>
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 px-3 py-2 rounded-xl hover:bg-gray-100 transition-colors"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-            切换账号
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigate('/strategies')}
+              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 px-3 py-2 rounded-xl hover:bg-gray-100 transition-colors"
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              攻略库
+            </button>
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 px-3 py-2 rounded-xl hover:bg-gray-100 transition-colors"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              切换账号
+            </button>
+          </div>
         </div>
       </header>
 

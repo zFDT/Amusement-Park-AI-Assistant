@@ -149,3 +149,65 @@ export function archiveVisit(userId: string, visitId: string): Promise<{ visitId
     method: 'PATCH',
   }).then((r) => ({ visitId: r.visit_id, status: r.status }))
 }
+
+// ── Strategies ────────────────────────────────────────────────────────────────
+
+export interface StrategySummary {
+  strategyId: string
+  parkId: string
+  platform: string
+  sourceUrl: string
+  title: string
+  contentExcerpt: string
+  author: string
+  likes: number
+  collects: number
+  comments: number
+  imageUrls: string[]
+  aiSummary: string | null
+  collectedAt: string
+  mentionedAttractions: string[]
+}
+
+export interface StrategyListResponse {
+  total: number
+  strategies: StrategySummary[]
+}
+
+export function getStrategies(params?: {
+  parkId?: string
+  platform?: string
+  q?: string
+  limit?: number
+  offset?: number
+}): Promise<StrategyListResponse> {
+  const qs = new URLSearchParams()
+  if (params?.parkId) qs.set('park_id', params.parkId)
+  if (params?.platform) qs.set('platform', params.platform)
+  if (params?.q) qs.set('q', params.q)
+  if (params?.limit != null) qs.set('limit', String(params.limit))
+  if (params?.offset != null) qs.set('offset', String(params.offset))
+  const query = qs.toString()
+  return request<{
+    total: number
+    strategies: Array<Record<string, unknown>>
+  }>(`/strategies${query ? `?${query}` : ''}`).then((r) => ({
+    total: r.total,
+    strategies: r.strategies.map((s) => ({
+      strategyId: s.strategy_id as string,
+      parkId: s.park_id as string,
+      platform: s.platform as string,
+      sourceUrl: s.source_url as string,
+      title: s.title as string,
+      contentExcerpt: s.content_excerpt as string,
+      author: s.author as string,
+      likes: s.likes as number,
+      collects: s.collects as number,
+      comments: s.comments as number,
+      imageUrls: (s.image_urls ?? []) as string[],
+      aiSummary: (s.ai_summary ?? null) as string | null,
+      collectedAt: s.collected_at as string,
+      mentionedAttractions: (s.mentioned_attractions ?? []) as string[],
+    })),
+  }))
+}
