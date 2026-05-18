@@ -19,6 +19,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 import httpx
 import anthropic
 
+from app.core.config import settings
+
 logger = logging.getLogger(__name__)
 
 # 提炼用的 system prompt

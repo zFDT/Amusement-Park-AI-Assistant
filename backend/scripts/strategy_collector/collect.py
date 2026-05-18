@@ -380,6 +380,8 @@ async def collect(
     enable_distill: bool = True,
     force_login: bool = False,
     login_only: bool = False,
+    offset: int = 0,
+    max_total: int | None = None,
 ):
     if not DRISSION_AVAILABLE:
         logger.error("DrissionPage 未安装，无法运行采集器")
@@ -405,12 +407,29 @@ async def collect(
         existing_strategy_ids = await load_existing_strategy_ids(park_id)
         skipped_existing = 0
         skipped_duplicate = 0
+        skipped_offset = 0
+        skipped_max_total = 0
+        item_counter = 0
 
         for keyword in keywords:
+            if max_total is not None and len(all_items) >= max_total:
+                logger.info(f"已达到最大采集数 {max_total}，停止采集")
+                break
+
             logger.info(f"搜索关键词：{keyword}")
             items = search_xhs(page, keyword, limit=limit_per_keyword)
 
             for item in items:
+                item_counter += 1
+
+                if item_counter <= offset:
+                    skipped_offset += 1
+                    continue
+
+                if max_total is not None and len(all_items) >= max_total:
+                    skipped_max_total += 1
+                    continue
+
                 url = item.get("source_url", "")
                 if not url:
                     continue
@@ -432,10 +451,12 @@ async def collect(
             time.sleep(2)
 
         logger.info(
-            "共采集 %d 条去重后的攻略（本轮内重复 %d 条，数据库已存在 %d 条）",
+            "共采集 %d 条去重后的攻略（本轮内重复 %d 条，数据库已存在 %d 条，offset 跳过 %d 条，max_total 截断 %d 条）",
             len(all_items),
             skipped_duplicate,
             skipped_existing,
+            skipped_offset,
+            skipped_max_total,
         )
 
         new_items = await save_strategies(park_id, all_items, existing_strategy_ids=existing_strategy_ids)
@@ -455,6 +476,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="迪士尼攻略采集器")
     parser.add_argument("--park", default="hongkong_disney", choices=list(PARK_KEYWORDS.keys()))
     parser.add_argument("--limit", type=int, default=20, help="每个关键词采集数量")
+    parser.add_argument("--offset", type=int, default=0, help="跳过前 N 条搜索结果（用于续采或避免重复采集热门笔记）")
+    parser.add_argument("--max-total", type=int, default=None, help="限制本次采集的总条数上限（不含数据库已有）")
     parser.add_argument("--no-distill", action="store_true", help="跳过 AI 提炼步骤")
     parser.add_argument("--force-login", action="store_true", help="忽略已保存登录态，强制重新登录")
     parser.add_argument("--login-only", action="store_true", help="仅执行登录，不开始采集")
@@ -466,4 +489,6 @@ if __name__ == "__main__":
         enable_distill=not args.no_distill,
         force_login=args.force_login,
         login_only=args.login_only,
+        offset=args.offset,
+        max_total=args.max_total,
     ))
