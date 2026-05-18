@@ -30,6 +30,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.models.park import Strategy
+from scripts.strategy_collector.distill import distill_batch, resolve_distill_ai_config
 
 logger = logging.getLogger(__name__)
 
@@ -325,15 +326,23 @@ async def save_strategies(park_id: str, items: list[dict]) -> list[dict]:
 
 async def apply_ai_summaries(new_items: list[dict]) -> None:
     """对新入库的攻略批量调用 AI 提炼，将摘要写回数据库"""
-    from scripts.strategy_collector.distill import distill_batch
-
-    api_key = settings.anthropic_api_key
-    if not api_key:
-        logger.warning("未配置 ANTHROPIC_API_KEY，跳过 AI 提炼步骤")
+    ai_config = resolve_distill_ai_config()
+    if not ai_config:
+        logger.warning("未配置可用的 AI 提炼配置，跳过 AI 提炼步骤")
         return
 
-    logger.info(f"开始 AI 提炼，共 {len(new_items)} 条攻略…")
-    summaries = await distill_batch(new_items, api_key=api_key)
+    logger.info(
+        "开始 AI 提炼，共 %d 条攻略…（api_mode=%s, code=%s）",
+        len(new_items),
+        ai_config["api_mode"],
+        ai_config.get("code", ""),
+    )
+    summaries = await distill_batch(
+        new_items,
+        api_key=ai_config["api_key"],
+        base_url=ai_config.get("base_url") or None,
+        api_mode=ai_config.get("api_mode", "anthropic"),
+    )
 
     if not summaries:
         logger.info("AI 提炼无结果")

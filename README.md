@@ -66,6 +66,7 @@ DATABASE_URL=postgresql+asyncpg://youyuan:youyuan@localhost:5432/youyuan
 REDIS_URL=redis://localhost:6379
 CORS_ORIGINS=["http://localhost:5173"]
 AI_INTERNAL_PROFILES=[]
+AI_DISTILL_PROFILE_CODE=
 AI_DEBUG_LOGGING=false
 ```
 
@@ -144,8 +145,9 @@ python -m scripts.strategy_collector.redist --park hongkong_disney
 **说明**：
 
 - 采集器会获取笔记正文 + 全部图片 URL + 点赞/收藏/评论数
-- 采集阶段的 AI 配置在 `backend/.env` 里，当前主要使用 `ANTHROPIC_API_KEY`；如果你加了 `AI_DEBUG_LOGGING=true`，会打印完整 AI 上下文日志，便于核对
-- AI 提炼使用 Claude Haiku 视觉模型，分析图文内容生成100-150字实用摘要
+- 采集阶段的 AI 配置在 `backend/.env` 里，建议使用 `AI_INTERNAL_PROFILES` + `AI_DISTILL_PROFILE_CODE` 来定义（例如 `api_mode="openai"` + `base_url="https://api.openai.com/v1"` + `api_key` + `model_id`）
+- 如果你加了 `AI_DEBUG_LOGGING=true`，会打印完整 AI 上下文日志，便于核对
+- AI 提炼支持从 `AI_INTERNAL_PROFILES` 读取多协议配置；也兼容旧版 `ANTHROPIC_API_KEY` 作为兜底
 - 摘要注入 AI 上下文时比原始正文截取更精准，显著提升路线规划质量
 - 建议管理员定期执行（每周一次），无需用户触发
 

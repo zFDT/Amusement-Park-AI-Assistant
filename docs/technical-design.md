@@ -311,7 +311,7 @@ Response:
 
 ### 4.3 Strategy 数据库模型
 
-`strategies` 表存储从小红书采集的游园攻略：
+`strategies` 表存储从小红书采集的游园攻略。采集流程会先将去重后的原始攻略写入数据库，再对新入库数据执行 AI 摘要提炼；如果提炼失败，已入库攻略不会回滚，后续可通过补提炼脚本重试。
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
@@ -422,6 +422,7 @@ REDIS_URL=redis://localhost:6379
 QUEUE_TIMES_API_KEY=  # queue-times.com 免费版无需 key
 CORS_ORIGINS=["http://localhost:5173"]
 AI_INTERNAL_PROFILES=[]
+AI_DISTILL_PROFILE_CODE=
 AI_DEBUG_LOGGING=false
 
 # 可选

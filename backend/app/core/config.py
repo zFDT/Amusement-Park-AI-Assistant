@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     session_ttl_seconds: int = 86400  # 24 hours
     waittime_cache_ttl_seconds: int = 300  # 5 minutes
     ai_debug_logging: bool = False
+    ai_distill_profile_code: str = ""
     ai_internal_profiles: list[AIInternalProfile] = Field(default_factory=list)
 
 

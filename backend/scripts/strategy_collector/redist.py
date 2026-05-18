@@ -18,15 +18,15 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.models.park import Strategy
-from scripts.strategy_collector.distill import distill_batch
+from scripts.strategy_collector.distill import distill_batch, resolve_distill_ai_config
 
 logger = logging.getLogger(__name__)
 
 
 async def redist(park_id: str = "hongkong_disney"):
-    api_key = settings.anthropic_api_key
-    if not api_key:
-        logger.error("未配置 ANTHROPIC_API_KEY，无法运行 AI 提炼")
+    ai_config = resolve_distill_ai_config()
+    if not ai_config:
+        logger.error("未配置可用的 AI 提炼配置，无法运行 AI 提炼")
         return
 
     async with AsyncSessionLocal() as session:
@@ -52,7 +52,12 @@ async def redist(park_id: str = "hongkong_disney"):
         for s in strategies
     ]
 
-    summaries = await distill_batch(items, api_key=api_key)
+    summaries = await distill_batch(
+        items,
+        api_key=ai_config["api_key"],
+        base_url=ai_config.get("base_url") or None,
+        api_mode=ai_config.get("api_mode", "anthropic"),
+    )
 
     async with AsyncSessionLocal() as session:
         for strategy_id, summary in summaries.items():
