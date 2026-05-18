@@ -22,7 +22,7 @@ interface PlanningFormProps {
 
 export function PlanningForm({ parkId }: PlanningFormProps) {
   const navigate = useNavigate()
-  const { setSession, aiConfig } = useAppStore()
+  const { setSession, addMessage, aiConfig } = useAppStore()
   const userId = useAppStore((s) => s.userId)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -79,6 +79,13 @@ export function PlanningForm({ parkId }: PlanningFormProps) {
     try {
       const result = await createSession(planningInfo, aiConfig, userId ?? undefined)
       setSession(result.sessionId, parkId, planningInfo)
+      addMessage({
+        id: `${Date.now()}-init`,
+        role: 'assistant',
+        content: result.initialPlan,
+        createdAt: new Date().toISOString(),
+        route: result.route?.length ? result.route : undefined,
+      })
       navigate('/assistant')
     } catch (err) {
       setError((err as Error).message || '创建规划失败，请重试')

@@ -17,7 +17,6 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import httpx
-import anthropic
 
 from app.core.config import settings
 
@@ -233,26 +232,26 @@ async def distill_strategy(
                 raw_text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
                 logger.info("[distill] response %s", json.dumps({"provider": api_mode, "status_code": response.status_code, "raw": raw_text}, ensure_ascii=False))
         else:
-            kwargs: dict = {"api_key": api_key}
-            if base_url:
-                kwargs["base_url"] = base_url
-            client = anthropic.AsyncAnthropic(**kwargs)
-            logger.info("[distill] request %s", json.dumps({"provider": api_mode, "base_url": base_url or "https://api.anthropic.com", "model": model, "title": title, "image_count": len(image_payloads)}, ensure_ascii=False))
-            response = await client.messages.create(
-                model=model,
-                max_tokens=500,
-                system=_SYSTEM,
-                messages=[{
+            base = (base_url or "https://api.anthropic.com").rstrip("/")
+            url = f"{base}/v1/messages"
+            payload = {
+                "model": model,
+                "max_tokens": 500,
+                "system": _SYSTEM,
+                "messages": [{
                     "role": "user",
                     "content": [{"type": "text", "text": text_body}, *_build_image_parts_for_anthropic(image_payloads)],
                 }],
-            )
-            raw_text = response.content[0].text.strip()
-            logger.info("[distill] response %s", json.dumps({"provider": api_mode, "raw": raw_text}, ensure_ascii=False))
+            }
+            req_headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01"}
+            logger.info("[distill] request %s", json.dumps({"provider": api_mode, "url": url, "model": model, "title": title, "image_count": len(image_payloads)}, ensure_ascii=False))
+            async with httpx.AsyncClient(timeout=60) as client:
+                response = await client.post(url, json=payload, headers=req_headers)
+                response.raise_for_status()
+                data = response.json()
+                raw_text = data["content"][0]["text"].strip()
+                logger.info("[distill] response %s", json.dumps({"provider": api_mode, "status_code": response.status_code, "raw": raw_text}, ensure_ascii=False))
 
-    except anthropic.APIError as e:
-        logger.error(f"Claude API 错误: {e}")
-        return None, None
     except httpx.HTTPStatusError as e:
         logger.error(f"AI 提炼 HTTP 错误: {e.response.status_code} - {e.response.text}")
         return None, None

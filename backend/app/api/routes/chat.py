@@ -199,6 +199,14 @@ async def resume_session(code: str):
     )
 
 
+@router.get("/sessions/{session_id}/messages")
+async def get_session_messages(session_id: str):
+    """Return stored message history for a session (for client-side resume)."""
+    await _get_session(session_id)  # verify session exists
+    messages = await _get_messages(session_id)
+    return {"session_id": session_id, "messages": messages}
+
+
 @router.post("/chat/stream")
 async def chat_stream(request: ChatRequest):
     session = await _get_session(request.session_id)

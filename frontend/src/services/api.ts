@@ -101,6 +101,11 @@ export function resumeByCode(code: string): Promise<ResumeSessionResponse> {
   }))
 }
 
+export function getSessionMessages(sessionId: string): Promise<{ sessionId: string; messages: Array<{ role: string; content: string }> }> {
+  return request<{ session_id: string; messages: Array<{ role: string; content: string }> }>(`/sessions/${sessionId}/messages`)
+    .then((r) => ({ sessionId: r.session_id, messages: r.messages }))
+}
+
 export function getWaitTimes(parkId: string): Promise<WaitTimesResponse> {
   return request(`/waittimes/${parkId}`)
 }

@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, ChevronRight, Archive, LogOut, CheckCircle2, Clock, BookOpen } from 'lucide-react'
 import { useAppStore } from '@/store/sessionStore'
-import { getVisits, archiveVisit } from '@/services/api'
+import { getVisits, archiveVisit, getSessionMessages } from '@/services/api'
 import type { VisitSummary } from '@/services/api'
-import type { PlanningInfo, ParkId } from '@/types'
+import type { PlanningInfo, ParkId, Message } from '@/types'
 
 const PARK_NAMES: Record<string, string> = {
   hongkong_disney: '香港迪士尼乐园',
@@ -44,7 +44,7 @@ export function VisitListPage() {
     }
   }
 
-  const handleResume = (visit: VisitSummary) => {
+  const handleResume = async (visit: VisitSummary) => {
     if (visit.status === 'archived') return
     const snap = visit.planningSnapshot
     const planningInfo: PlanningInfo | null = snap ? {
@@ -60,11 +60,26 @@ export function VisitListPage() {
       specialNotes: (snap.special_notes ?? '') as string,
       specialNeeds: (snap.special_needs ?? []) as PlanningInfo['specialNeeds'],
     } : null
+
+    let initialMessages: Message[] = []
+    try {
+      const res = await getSessionMessages(visit.visitId)
+      initialMessages = res.messages.map((m, i) => ({
+        id: `${visit.visitId}-${i}`,
+        role: m.role as Message['role'],
+        content: m.content,
+        createdAt: new Date().toISOString(),
+      }))
+    } catch {
+      // Redis 中 session 可能已过期，忽略错误，以空消息列表恢复
+    }
+
     resumeSession(
       visit.visitId,
       visit.parkId as ParkId,
       planningInfo ?? ({} as PlanningInfo),
       [],
+      initialMessages,
     )
     navigate('/assistant')
   }

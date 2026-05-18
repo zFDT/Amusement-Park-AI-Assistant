@@ -302,8 +302,6 @@ async def _stream_provider_text(
                     except Exception:
                         continue
                     text = _extract_text_from_payload(runtime["api_mode"], data)
-                    if settings.ai_debug_logging:
-                        _log_ai_event(request_id, "chunk", {"raw": data, "text": text})
                     if text:
                         yield text
         except Exception as exc:
