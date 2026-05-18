@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, Search, Heart, Bookmark, MessageCircle, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react'
+import { ArrowLeft, Search, Heart, Bookmark, MessageCircle, ExternalLink, ChevronLeft, ChevronRight, Lightbulb, Route } from 'lucide-react'
 import { getStrategies } from '@/services/api'
 import type { StrategySummary } from '@/services/api'
 
@@ -211,10 +211,19 @@ function StrategyCard({ strategy: s, onClick }: { strategy: StrategySummary; onC
               {PARK_NAMES[s.parkId] ?? s.parkId}
             </span>
             <span className="text-xs text-gray-400">{s.platform}</span>
+            {s.structuredSummary && (
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                s.structuredSummary.is_useful
+                  ? 'text-green-700 bg-green-50'
+                  : 'text-gray-400 bg-gray-100'
+              }`}>
+                {s.structuredSummary.is_useful ? '有效攻略' : '仅晒图'}
+              </span>
+            )}
           </div>
           <p className="text-sm font-semibold text-gray-900 line-clamp-2 leading-snug">{s.title || '（无标题）'}</p>
           <p className="text-xs text-gray-500 mt-1 line-clamp-2 leading-relaxed">
-            {s.aiSummary || s.contentExcerpt || '暂无内容'}
+            {s.structuredSummary?.summary || s.aiSummary || s.contentExcerpt || '暂无内容'}
           </p>
         </div>
       </div>
@@ -267,7 +276,14 @@ function StrategyDetail({ strategy: s, onClose }: { strategy: StrategySummary; o
             {PARK_NAMES[s.parkId] ?? s.parkId}
           </span>
           <span className="text-xs text-gray-500 bg-gray-100 px-2.5 py-1 rounded-full">{s.platform}</span>
-          {s.mentionedAttractions.slice(0, 5).map((a) => (
+          {s.structuredSummary && (
+            <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
+              s.structuredSummary.is_useful ? 'text-green-700 bg-green-50' : 'text-gray-400 bg-gray-100'
+            }`}>
+              {s.structuredSummary.is_useful ? '有效攻略' : '仅晒图'}
+            </span>
+          )}
+          {(s.structuredSummary?.mentioned_attractions ?? s.mentionedAttractions).slice(0, 5).map((a) => (
             <span key={a} className="text-xs text-purple-600 bg-purple-50 px-2.5 py-1 rounded-full">{a}</span>
           ))}
         </div>
@@ -300,8 +316,38 @@ function StrategyDetail({ strategy: s, onClose }: { strategy: StrategySummary; o
           </div>
         )}
 
-        {/* AI Summary */}
-        {s.aiSummary && (
+        {/* Structured summary */}
+        {s.structuredSummary?.is_useful && (
+          <div className="space-y-3">
+            {s.structuredSummary.summary && (
+              <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-2xl p-4">
+                <p className="text-xs font-semibold text-blue-700 mb-1.5">AI 摘要</p>
+                <p className="text-sm text-gray-700 leading-relaxed">{s.structuredSummary.summary}</p>
+              </div>
+            )}
+            {s.structuredSummary.suggested_route && (
+              <div className="bg-green-50 rounded-2xl p-4">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <Route className="w-3.5 h-3.5 text-green-700" />
+                  <p className="text-xs font-semibold text-green-700">建议路线</p>
+                </div>
+                <p className="text-sm text-gray-700 leading-relaxed">{s.structuredSummary.suggested_route}</p>
+              </div>
+            )}
+            {s.structuredSummary.tips && (
+              <div className="bg-amber-50 rounded-2xl p-4">
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <Lightbulb className="w-3.5 h-3.5 text-amber-700" />
+                  <p className="text-xs font-semibold text-amber-700">实用技巧</p>
+                </div>
+                <p className="text-sm text-gray-700 leading-relaxed">{s.structuredSummary.tips}</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Fallback: plain ai_summary when no structured data */}
+        {!s.structuredSummary && s.aiSummary && (
           <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-2xl p-4">
             <p className="text-xs font-semibold text-blue-700 mb-2">AI 提炼摘要</p>
             <p className="text-sm text-gray-700 leading-relaxed">{s.aiSummary}</p>

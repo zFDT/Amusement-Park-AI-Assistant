@@ -1,5 +1,5 @@
 """
-数据库迁移：为 strategies 表添加 image_urls 和 ai_summary 字段
+数据库迁移：为 strategies 表添加字段
 
 对已有数据库执行一次即可：
     cd backend
@@ -15,13 +15,16 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from sqlalchemy import text
 from app.core.database import AsyncSessionLocal
 
+_MIGRATIONS = [
+    ("image_urls", "ALTER TABLE strategies ADD COLUMN image_urls JSON"),
+    ("ai_summary", "ALTER TABLE strategies ADD COLUMN ai_summary TEXT"),
+    ("structured_summary", "ALTER TABLE strategies ADD COLUMN structured_summary JSON"),
+]
+
 
 async def migrate():
     async with AsyncSessionLocal() as session:
-        for col, ddl in [
-            ("image_urls", "ALTER TABLE strategies ADD COLUMN image_urls JSON"),
-            ("ai_summary", "ALTER TABLE strategies ADD COLUMN ai_summary TEXT"),
-        ]:
+        for col, ddl in _MIGRATIONS:
             try:
                 await session.execute(text(ddl))
                 await session.commit()

@@ -152,6 +152,14 @@ export function archiveVisit(userId: string, visitId: string): Promise<{ visitId
 
 // ── Strategies ────────────────────────────────────────────────────────────────
 
+export interface StructuredSummary {
+  is_useful: boolean
+  mentioned_attractions: string[]
+  suggested_route: string | null
+  tips: string | null
+  summary: string | null
+}
+
 export interface StrategySummary {
   strategyId: string
   parkId: string
@@ -165,6 +173,7 @@ export interface StrategySummary {
   comments: number
   imageUrls: string[]
   aiSummary: string | null
+  structuredSummary: StructuredSummary | null
   collectedAt: string
   mentionedAttractions: string[]
 }
@@ -206,6 +215,7 @@ export function getStrategies(params?: {
       comments: s.comments as number,
       imageUrls: (s.image_urls ?? []) as string[],
       aiSummary: (s.ai_summary ?? null) as string | null,
+      structuredSummary: (s.structured_summary ?? null) as StructuredSummary | null,
       collectedAt: s.collected_at as string,
       mentionedAttractions: (s.mentioned_attractions ?? []) as string[],
     })),

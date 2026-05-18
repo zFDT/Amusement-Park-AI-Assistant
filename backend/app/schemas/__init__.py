@@ -143,3 +143,26 @@ class WaitTimesResponse(BaseModel):
     park_id: str
     last_updated: str
     attractions: list[WaitTimeItem]
+
+
+class StrategySummary(BaseModel):
+    strategy_id: str
+    park_id: str
+    platform: str
+    source_url: str
+    title: str
+    content_excerpt: str
+    author: str
+    likes: int
+    collects: int
+    comments: int
+    image_urls: list[str] = []
+    ai_summary: str | None = None
+    structured_summary: dict | None = None  # {is_useful, mentioned_attractions, suggested_route, tips, summary}
+    collected_at: str
+    mentioned_attractions: list[str] = []
+
+
+class StrategyListResponse(BaseModel):
+    total: int
+    strategies: list[StrategySummary]

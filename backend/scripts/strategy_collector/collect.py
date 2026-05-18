@@ -28,6 +28,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from app.core.config import settings
+from app.core.logging import configure_logging
 from app.core.database import AsyncSessionLocal
 from app.models.park import Strategy
 from scripts.strategy_collector.distill import distill_batch, resolve_distill_ai_config
@@ -353,25 +354,28 @@ async def apply_ai_summaries(new_items: list[dict]) -> None:
         ai_config["api_mode"],
         ai_config.get("code", ""),
     )
-    summaries = await distill_batch(
+    results = await distill_batch(
         new_items,
         api_key=ai_config["api_key"],
         base_url=ai_config.get("base_url") or None,
         api_mode=ai_config.get("api_mode", "anthropic"),
     )
 
-    if not summaries:
+    if not results:
         logger.info("AI 提炼无结果")
         return
 
     async with AsyncSessionLocal() as session:
-        for strategy_id, summary in summaries.items():
+        for strategy_id, data in results.items():
             strategy = await session.get(Strategy, strategy_id)
             if strategy:
-                strategy.ai_summary = summary
+                if data.get("ai_summary"):
+                    strategy.ai_summary = data["ai_summary"]
+                if data.get("structured"):
+                    strategy.structured_summary = data["structured"]
         await session.commit()
 
-    logger.info(f"AI 提炼完成，成功提炼 {len(summaries)} 条")
+    logger.info(f"AI 提炼完成，成功提炼 {len(results)} 条")
 
 
 async def collect(
@@ -471,7 +475,8 @@ async def collect(
 
 if __name__ == "__main__":
     import argparse
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    configure_logging()
+    logging.getLogger(__name__).setLevel(logging.INFO)
 
     parser = argparse.ArgumentParser(description="迪士尼攻略采集器")
     parser.add_argument("--park", default="hongkong_disney", choices=list(PARK_KEYWORDS.keys()))

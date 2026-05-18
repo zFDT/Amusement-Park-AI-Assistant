@@ -115,7 +115,8 @@ class Strategy(Base):
     tags = Column(JSON, default=list)  # 提取的标签/关键词
     mentioned_attractions = Column(JSON, default=list)  # 提到的项目名称
     image_urls = Column(JSON, default=list)  # 图片 CDN URL 列表
-    ai_summary = Column(Text)  # AI 提炼的摘要（Claude 处理后）
+    ai_summary = Column(Text)  # AI 提炼的摘要（降级文本）
+    structured_summary = Column(JSON)  # AI 结构化提炼结果 {is_useful, mentioned_attractions, suggested_route, tips, summary}
     collected_at = Column(DateTime(timezone=True), default=_now)
     is_active = Column(Boolean, default=True)
 

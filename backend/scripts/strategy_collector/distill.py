@@ -21,15 +21,35 @@ import anthropic
 
 from app.core.config import settings
 
-logger = logging.getLogger(__name__)
+from app.core.logging import configure_logging
 
-# 提炼用的 system prompt
-_SYSTEM = (
-    "你是一个迪士尼乐园游园助理，专门从小红书攻略中提炼实用信息。"
-    "请用详细总结以下攻略的核心建议，包括：游玩顺序/时间安排、"
-    "排队技巧（哪些项目要早去/晚去）、餐饮建议、特别提示（闪电通道、身高限制等）。"
-    "输出纯文本，简洁实用，直接写成一段话，不要分点列举，不要重复标题。"
-)
+configure_logging()
+
+logger = logging.getLogger("app.ai.distill")
+
+# 提炼用的 system prompt — 要求返回结构化 JSON
+_SYSTEM = """\
+你是一个迪士尼乐园游园助理，专门从小红书攻略中提炼实用信息。
+
+请分析以下攻略（含正文和图片），严格按照下面的 JSON 格式输出，不要输出任何其他内容：
+
+{
+  "is_useful": true,
+  "mentioned_attractions": ["项目名1", "项目名2"],
+  "suggested_route": "简短的游玩顺序/时间安排建议，1-2句话",
+  "tips": "排队技巧、餐饮建议、闪电通道、身高限制等实用提示，1-3句话",
+  "summary": "100字以内的整体摘要，涵盖核心亮点"
+}
+
+字段说明：
+- is_useful: 该攻略是否包含实质性游园建议（纯晒图/无内容的设为 false）
+- mentioned_attractions: 攻略中明确提到的游乐项目名称列表（中文名，最多8个）
+- suggested_route: 游玩顺序或时间安排，没有则填 null
+- tips: 实用技巧，没有则填 null
+- summary: 整体摘要，is_useful=false 时填 null
+
+只输出 JSON，不要 markdown 代码块，不要解释。\
+"""
 
 # XHS CDN 图片下载时需要带 Referer，否则 403
 _XHS_HEADERS = {
@@ -151,14 +171,14 @@ async def distill_strategy(
     base_url: str | None = None,
     model: str = "claude-haiku-4-5-20251001",
     api_mode: str = "anthropic",
-) -> str | None:
+) -> tuple[str | None, dict | None]:
     """
-    调用视觉模型提炼攻略，返回 AI 摘要字符串。
-    失败时返回 None（不抛异常，采集流程不应因提炼失败而中断）。
+    调用视觉模型提炼攻略。
+    返回 (ai_summary文本降级, structured_summary字典)，失败时均为 None。
     """
     if not api_key:
         logger.warning("未配置 API Key，跳过 AI 提炼")
-        return None
+        return None, None
 
     api_mode = api_mode if api_mode in SUPPORTED_DISTILL_API_MODES else "anthropic"
     text_body = _build_text_body(title, content)
@@ -175,22 +195,25 @@ async def distill_strategy(
             if isinstance(result, tuple):
                 image_payloads.append(result)
 
+    raw_text: str | None = None
     try:
         if api_mode in {"openai", "openai-responses"}:
             url = f"{(base_url or 'https://api.openai.com/v1').rstrip('/')}/chat/completions"
             payload = {
                 "model": model,
-                "max_tokens": 300,
+                "max_tokens": 500,
                 "messages": [
                     {"role": "system", "content": _SYSTEM},
                     {"role": "user", "content": [{"type": "text", "text": text_body}, *_build_image_parts_for_openai(image_payloads)]},
                 ],
             }
+            logger.info("[distill] request %s", json.dumps({"provider": api_mode, "url": url, "model": model, "title": title, "image_count": len(image_payloads)}, ensure_ascii=False))
             async with httpx.AsyncClient(timeout=60) as client:
                 response = await client.post(url, json=payload, headers={"Authorization": f"Bearer {api_key}"})
                 response.raise_for_status()
                 data = response.json()
-                summary = data["choices"][0]["message"]["content"].strip()
+                raw_text = data["choices"][0]["message"]["content"].strip()
+                logger.info("[distill] response %s", json.dumps({"provider": api_mode, "status_code": response.status_code, "raw": raw_text}, ensure_ascii=False))
         elif api_mode == "gemini":
             base = (base_url or "https://generativelanguage.googleapis.com/v1beta").rstrip("/")
             url = f"{base}/models/{model}:generateContent"
@@ -200,40 +223,74 @@ async def distill_strategy(
                     "role": "user",
                     "parts": [{"text": text_body}, *_build_image_parts_for_gemini(image_payloads)],
                 }],
-                "generationConfig": {"maxOutputTokens": 300},
+                "generationConfig": {"maxOutputTokens": 500},
             }
+            logger.info("[distill] request %s", json.dumps({"provider": api_mode, "url": url, "model": model, "title": title, "image_count": len(image_payloads)}, ensure_ascii=False))
             async with httpx.AsyncClient(timeout=60) as client:
                 response = await client.post(url, json=payload, headers={"x-goog-api-key": api_key})
                 response.raise_for_status()
                 data = response.json()
-                summary = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                raw_text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                logger.info("[distill] response %s", json.dumps({"provider": api_mode, "status_code": response.status_code, "raw": raw_text}, ensure_ascii=False))
         else:
             kwargs: dict = {"api_key": api_key}
             if base_url:
                 kwargs["base_url"] = base_url
             client = anthropic.AsyncAnthropic(**kwargs)
+            logger.info("[distill] request %s", json.dumps({"provider": api_mode, "base_url": base_url or "https://api.anthropic.com", "model": model, "title": title, "image_count": len(image_payloads)}, ensure_ascii=False))
             response = await client.messages.create(
                 model=model,
-                max_tokens=300,
+                max_tokens=500,
                 system=_SYSTEM,
                 messages=[{
                     "role": "user",
                     "content": [{"type": "text", "text": text_body}, *_build_image_parts_for_anthropic(image_payloads)],
                 }],
             )
-            summary = response.content[0].text.strip()
+            raw_text = response.content[0].text.strip()
+            logger.info("[distill] response %s", json.dumps({"provider": api_mode, "raw": raw_text}, ensure_ascii=False))
 
-        logger.info(f"AI 提炼完成（{len(summary)}字）：{summary[:60]}…")
-        return summary
     except anthropic.APIError as e:
         logger.error(f"Claude API 错误: {e}")
-        return None
+        return None, None
     except httpx.HTTPStatusError as e:
         logger.error(f"AI 提炼 HTTP 错误: {e.response.status_code} - {e.response.text}")
-        return None
+        return None, None
     except Exception as e:
         logger.error(f"AI 提炼异常: {e}")
-        return None
+        return None, None
+
+    if not raw_text:
+        return None, None
+
+    # 解析结构化 JSON
+    structured: dict | None = None
+    try:
+        # 兼容模型偶尔包裹 ```json ... ``` 的情况
+        cleaned = raw_text.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("```")[1]
+            if cleaned.startswith("json"):
+                cleaned = cleaned[4:]
+            cleaned = cleaned.strip()
+        structured = json.loads(cleaned)
+    except Exception:
+        logger.warning("[distill] JSON 解析失败，原始输出: %s", raw_text[:200])
+
+    # ai_summary 降级文本：优先从结构化摘要拼接，否则用原始输出截取
+    ai_summary: str | None = None
+    if structured:
+        parts = []
+        if structured.get("summary"):
+            parts.append(structured["summary"])
+        if structured.get("tips"):
+            parts.append(structured["tips"])
+        ai_summary = " ".join(parts) if parts else None
+    if not ai_summary:
+        ai_summary = raw_text[:300]
+
+    logger.info("[distill] done title=%r is_useful=%s summary_len=%d", title[:40], structured.get("is_useful") if structured else "?", len(ai_summary or ""))
+    return ai_summary, structured
 
 
 async def distill_batch(
@@ -242,18 +299,18 @@ async def distill_batch(
     base_url: str | None = None,
     api_mode: str = "anthropic",
     concurrency: int = 3,
-) -> dict[str, str]:
+) -> dict[str, dict]:
     """
-    批量提炼多条攻略，返回 {strategy_id: summary} 字典。
+    批量提炼多条攻略，返回 {strategy_id: {"ai_summary": str, "structured": dict}} 字典。
     使用信号量控制并发，避免 API 限速。
     """
     sem = asyncio.Semaphore(concurrency)
-    results: dict[str, str] = {}
+    results: dict[str, dict] = {}
 
     async def _one(s: dict) -> None:
         async with sem:
             sid = s["id"]
-            summary = await distill_strategy(
+            ai_summary, structured = await distill_strategy(
                 title=s.get("title", ""),
                 content=s.get("content", ""),
                 image_urls=s.get("images", []),
@@ -261,8 +318,8 @@ async def distill_batch(
                 base_url=base_url,
                 api_mode=api_mode,
             )
-            if summary:
-                results[sid] = summary
+            if ai_summary or structured:
+                results[sid] = {"ai_summary": ai_summary, "structured": structured}
 
     await asyncio.gather(*[_one(s) for s in strategies])
     return results

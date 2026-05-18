@@ -366,6 +366,7 @@ async def stream_chat_response(
             "route": [r.model_dump() for r in route] if route else [],
         },
     )
+    logger.info("[AI:%s] response_complete %s", request_id, _json_dumps({"text": accumulated, "route": [r.model_dump() for r in route] if route else []}))
     if route:
         yield {"type": "route_update", "route": [r.model_dump() for r in route]}
 
@@ -425,4 +426,5 @@ async def generate_initial_plan(
             "route": [r.model_dump() for r in route],
         },
     )
+    logger.info("[AI:%s] response_complete %s", request_id, _json_dumps({"text": text, "route": [r.model_dump() for r in route]}))
     return text, route
