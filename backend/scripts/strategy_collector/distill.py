@@ -172,7 +172,7 @@ async def distill_strategy(
     image_urls: list[str],
     api_key: str,
     base_url: str | None = None,
-    model: str = "claude-haiku-4-5-20251001",
+    model: str = "",
     api_mode: str = "anthropic",
 ) -> tuple[str | None, dict | None]:
     """
@@ -320,6 +320,7 @@ async def distill_batch(
     api_key: str,
     base_url: str | None = None,
     api_mode: str = "anthropic",
+    model: str = "",
     concurrency: int = 3,
 ) -> dict[str, dict]:
     """
@@ -339,6 +340,7 @@ async def distill_batch(
                 api_key=api_key,
                 base_url=base_url,
                 api_mode=api_mode,
+                model=model,
             )
             if ai_summary or structured:
                 results[sid] = {"ai_summary": ai_summary, "structured": structured}
