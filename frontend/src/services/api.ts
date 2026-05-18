@@ -53,7 +53,17 @@ export function createSession(planningInfo: PlanningInfo, aiConfig?: AIConfig | 
   return request('/sessions', {
     method: 'POST',
     body: JSON.stringify({
-      ...planningInfo,
+      park_id: planningInfo.parkId,
+      visit_date: planningInfo.visitDate,
+      entry_time: planningInfo.entryTime,
+      exit_time: planningInfo.exitTime,
+      party: planningInfo.party,
+      preferences: planningInfo.preferences,
+      must_do_attractions: planningInfo.mustDoAttractions,
+      fitness_level: planningInfo.fitnessLevel,
+      experience_level: planningInfo.experienceLevel,
+      special_notes: planningInfo.specialNotes,
+      special_needs: planningInfo.specialNeeds,
       user_id: userId,
       ai_config: toServerAIConfig(aiConfig),
     }),
