@@ -1,4 +1,4 @@
-import type { PlanningInfo, WaitTimesResponse, RouteItem, AIConfig } from '@/types'
+import type { PlanningInfo, WaitTimesResponse, RouteItem, AIConfig, WaitStatus } from '@/types'
 import { toServerAIConfig } from '@/services/aiConfig'
 
 const BASE_URL = '/api'
@@ -124,7 +124,7 @@ export function getWaitTimes(parkId: string): Promise<WaitTimesResponse> {
       attractionId: a.attraction_id,
       attractionName: a.attraction_name ?? undefined,
       waitMinutes: a.wait_minutes,
-      status: a.status as import('@/types').WaitStatus,
+      status: a.status as WaitStatus,
       lastUpdated: a.last_updated,
     })),
   }))
