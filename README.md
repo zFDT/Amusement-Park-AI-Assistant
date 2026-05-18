@@ -13,6 +13,7 @@ AI 驱动的迪士尼乐园游园路线规划助理。整合实时排队数据�
 - 实时排队：每 5 分钟自动刷新，颜色编码直观展示
 - 自定义 AI Key：支持 DeepSeek / Qwen / OpenAI / Claude / Gemini / Grok / Kimi / MiniMax 等多协议配置
 - 内测码模式：可通过 `vip666` 等内测码直接启用服务端预置 AI 配置
+- 开发日志：可开启 `AI_DEBUG_LOGGING=true` 输出完整 AI 请求/响应上下文
 
 ---
 
@@ -65,6 +66,7 @@ DATABASE_URL=postgresql+asyncpg://youyuan:youyuan@localhost:5432/youyuan
 REDIS_URL=redis://localhost:6379
 CORS_ORIGINS=["http://localhost:5173"]
 AI_INTERNAL_PROFILES=[]
+AI_DEBUG_LOGGING=false
 ```
 
 ### 3. 初始化数据库
@@ -160,6 +162,8 @@ python -m scripts.strategy_collector.redist --park hongkong_disney
 - `Model ID`
 
 如果选择“内测码”模式并输入 `vip666`，后端会从 `AI_INTERNAL_PROFILES` 里查找对应配置；输入错误则会返回配置错误。
+
+开发调试时，如果你希望确认每次 AI 调用的完整上下文，可以把 `AI_DEBUG_LOGGING` 设为 `true`，后端会输出请求 payload、system prompt、消息历史、流式 chunk 和最终响应文本。
 
 ---
 

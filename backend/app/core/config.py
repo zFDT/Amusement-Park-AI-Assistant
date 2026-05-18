@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     claude_model: str = "claude-sonnet-4-6"
     session_ttl_seconds: int = 86400  # 24 hours
     waittime_cache_ttl_seconds: int = 300  # 5 minutes
+    ai_debug_logging: bool = False
     ai_internal_profiles: list[AIInternalProfile] = Field(default_factory=list)
 
 

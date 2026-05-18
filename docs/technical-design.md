@@ -422,6 +422,7 @@ REDIS_URL=redis://localhost:6379
 QUEUE_TIMES_API_KEY=  # queue-times.com 免费版无需 key
 CORS_ORIGINS=["http://localhost:5173"]
 AI_INTERNAL_PROFILES=[]
+AI_DEBUG_LOGGING=false
 
 # 可选
 ```
@@ -438,3 +439,15 @@ AI_INTERNAL_PROFILES=[]
 - `internalCode`
 
 后端会根据 `apiMode` 选择对应的请求协议与流式解析方式；若 `source=internal`，则从 `AI_INTERNAL_PROFILES` 中按 `code` 匹配配置。
+
+### 九、AI 调试日志
+
+当 `AI_DEBUG_LOGGING=true` 时，后端会在 `app.ai` 日志中输出：
+
+- 请求上下文（planning、wait times、completed attractions、current location）
+- 完整 `system_prompt`
+- 发送给模型的请求 payload
+- 流式返回的每个 chunk
+- 最终完整响应文本与解析出的路线 JSON
+
+为了避免泄露密钥，日志中会对 `Authorization` / `x-api-key` 之类的 header 做脱敏。

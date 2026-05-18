@@ -1,5 +1,7 @@
 import json
+import logging
 import re
+import uuid
 from datetime import datetime, timezone
 from typing import AsyncIterator, Iterable
 
@@ -10,6 +12,8 @@ from app.core.config import settings
 from app.schemas import PlanningInfo, RouteItem, AIConfig
 from app.services.prompt_builder import build_system_prompt
 
+logger = logging.getLogger("app.ai")
+
 API_MODE_DEFAULTS = {
     "openai": ("https://api.openai.com/v1", "gpt-4.1-mini"),
     "openai-responses": ("https://api.openai.com/v1", "gpt-4.1-mini"),
@@ -19,6 +23,24 @@ API_MODE_DEFAULTS = {
 }
 
 SUPPORTED_API_MODES = set(API_MODE_DEFAULTS.keys())
+
+
+def _json_dumps(value: object) -> str:
+    return json.dumps(value, ensure_ascii=False, default=str)
+
+
+def _redact_headers(headers: dict[str, str]) -> dict[str, str]:
+    redacted = dict(headers)
+    for key in list(redacted.keys()):
+        if key.lower() in {"authorization", "x-api-key", "api-key", "anthropic-api-key"}:
+            redacted[key] = "***REDACTED***"
+    return redacted
+
+
+def _log_ai_event(request_id: str, event: str, payload: object) -> None:
+    if not settings.ai_debug_logging:
+        return
+    logger.info("[AI:%s] %s %s", request_id, event, _json_dumps(payload))
 
 
 def _coalesce(value: str | None, fallback: str) -> str:
@@ -238,36 +260,60 @@ async def _raise_for_status(response: httpx.Response) -> None:
     raise HTTPException(status_code=response.status_code, detail=detail or "AI 请求失败")
 
 
-async def _stream_provider_text(system_prompt: str, messages: list[dict], ai_config: AIConfig | None) -> AsyncIterator[str]:
+async def _stream_provider_text(
+    system_prompt: str,
+    messages: list[dict],
+    ai_config: AIConfig | None,
+    request_id: str,
+) -> AsyncIterator[str]:
     runtime = _resolve_runtime_config(ai_config)
     url, payload, headers = _build_payload(system_prompt, messages, runtime, stream=True)
 
+    _log_ai_event(
+        request_id,
+        "request",
+        {
+            "provider": runtime["api_mode"],
+            "source": runtime["source"],
+            "url": url,
+            "headers": _redact_headers(headers),
+            "payload": payload,
+        },
+    )
+
     timeout = httpx.Timeout(connect=30.0, read=None, write=30.0, pool=30.0)
     async with httpx.AsyncClient(timeout=timeout) as client:
-        async with client.stream("POST", url, json=payload, headers=headers) as response:
-            await _raise_for_status(response)
-            async for line in response.aiter_lines():
-                if not line:
-                    continue
-                raw = line.strip()
-                if raw in {"[DONE]", "data: [DONE]"}:
-                    break
-                if raw.startswith("event:") or raw.startswith(":"):
-                    continue
-                if raw.startswith("data:"):
-                    raw = raw[5:].strip()
-                try:
-                    data = json.loads(raw)
-                except Exception:
-                    continue
-                text = _extract_text_from_payload(runtime["api_mode"], data)
-                if text:
-                    yield text
+        try:
+            async with client.stream("POST", url, json=payload, headers=headers) as response:
+                await _raise_for_status(response)
+                _log_ai_event(request_id, "response_status", {"status_code": response.status_code})
+                async for line in response.aiter_lines():
+                    if not line:
+                        continue
+                    raw = line.strip()
+                    if raw in {"[DONE]", "data: [DONE]"}:
+                        break
+                    if raw.startswith("event:") or raw.startswith(":"):
+                        continue
+                    if raw.startswith("data:"):
+                        raw = raw[5:].strip()
+                    try:
+                        data = json.loads(raw)
+                    except Exception:
+                        continue
+                    text = _extract_text_from_payload(runtime["api_mode"], data)
+                    if settings.ai_debug_logging:
+                        _log_ai_event(request_id, "chunk", {"raw": data, "text": text})
+                    if text:
+                        yield text
+        except Exception as exc:
+            _log_ai_event(request_id, "error", {"error": str(exc)})
+            raise
 
 
-async def _collect_response_text(system_prompt: str, messages: list[dict], ai_config: AIConfig | None) -> str:
+async def _collect_response_text(system_prompt: str, messages: list[dict], ai_config: AIConfig | None, request_id: str) -> str:
     chunks: list[str] = []
-    async for chunk in _stream_provider_text(system_prompt, messages, ai_config):
+    async for chunk in _stream_provider_text(system_prompt, messages, ai_config, request_id):
         chunks.append(chunk)
     return "".join(chunks)
 
@@ -281,6 +327,7 @@ async def stream_chat_response(
     strategy_snippets: list[str] | None = None,
     ai_config: AIConfig | None = None,
 ) -> AsyncIterator[dict]:
+    request_id = uuid.uuid4().hex[:12]
     current_time = datetime.now(timezone.utc).astimezone().isoformat()
     system_prompt = build_system_prompt(
         planning=planning,
@@ -290,13 +337,35 @@ async def stream_chat_response(
         current_location=current_location,
         strategy_snippets=strategy_snippets,
     )
+    _log_ai_event(
+        request_id,
+        "context",
+        {
+            "mode": "stream_chat_response",
+            "planning": planning.model_dump(),
+            "wait_times_json": wait_times_json,
+            "completed_attractions": completed_attractions,
+            "current_location": current_location,
+            "strategy_snippets": strategy_snippets,
+            "messages": messages,
+            "system_prompt": system_prompt,
+        },
+    )
     accumulated = ""
 
-    async for text in _stream_provider_text(system_prompt, messages, ai_config):
+    async for text in _stream_provider_text(system_prompt, messages, ai_config, request_id):
         accumulated += text
         yield {"type": "text", "content": text}
 
     route = _parse_route_from_text(accumulated)
+    _log_ai_event(
+        request_id,
+        "response",
+        {
+            "text": accumulated,
+            "route": [r.model_dump() for r in route] if route else [],
+        },
+    )
     if route:
         yield {"type": "route_update", "route": [r.model_dump() for r in route]}
 
@@ -309,6 +378,7 @@ async def generate_initial_plan(
     strategy_snippets: list[str] | None = None,
     ai_config: AIConfig | None = None,
 ) -> tuple[str, list[RouteItem]]:
+    request_id = uuid.uuid4().hex[:12]
     current_time = datetime.now(timezone.utc).astimezone().isoformat()
     system_prompt = build_system_prompt(
         planning=planning,
@@ -317,6 +387,23 @@ async def generate_initial_plan(
         completed_attractions=[],
         current_location=None,
         strategy_snippets=strategy_snippets,
+    )
+    _log_ai_event(
+        request_id,
+        "context",
+        {
+            "mode": "generate_initial_plan",
+            "planning": planning.model_dump(),
+            "wait_times_json": wait_times_json,
+            "strategy_snippets": strategy_snippets,
+            "system_prompt": system_prompt,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "请根据我的信息，为我生成一份完整的今日游园路线规划。",
+                }
+            ],
+        },
     )
     text = await _collect_response_text(
         system_prompt,
@@ -327,6 +414,15 @@ async def generate_initial_plan(
             }
         ],
         ai_config,
+        request_id,
     )
     route = _parse_route_from_text(text) or []
+    _log_ai_event(
+        request_id,
+        "response",
+        {
+            "text": text,
+            "route": [r.model_dump() for r in route],
+        },
+    )
     return text, route

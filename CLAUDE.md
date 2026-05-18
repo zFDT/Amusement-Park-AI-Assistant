@@ -9,6 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **每完成一次完整的功能修改/优化/修复后，必须立即用中文进行 git commit 提交**，格式：`feat/fix/refactor/docs(模块): 简短描述`。例：`feat(用户): 新增登录和游园记录管理`、`fix(排队): 修复香港迪士尼 park_id 错误`。
 - **每次代码修改后必须同步更新相关文档**：涉及 API/模型/脚本变更时更新 `docs/technical-design.md`；涉及用户可见功能或运行命令变更时更新 `README.md`；涉及开发约束/架构/命令变更时更新本文件（`CLAUDE.md`）。文档更新应与代码变更在同一次 commit 中提交。
 - Windows 一键启动脚本已统一为根目录 `start-dev.bat`（内部调用 `start-dev.ps1`），默认后端使用 `8001`，前端使用 `5173`，并自动设置 `VITE_API_PROXY_TARGET`。
+- 开发阶段如果需要查看 AI 调用的完整上下文，可在 `backend/.env` 中设置 `AI_DEBUG_LOGGING=true`；日志会输出完整请求 payload、system prompt、chunk 和最终响应，但会对密钥类 header 做脱敏。
 
 ---
 
