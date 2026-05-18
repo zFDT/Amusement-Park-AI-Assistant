@@ -2,6 +2,10 @@ from pydantic import BaseModel
 from typing import Literal
 
 
+APIMode = Literal["openai", "openai-responses", "ollama", "anthropic", "gemini"]
+AIConfigSource = Literal["custom", "internal"]
+
+
 ParkId = Literal["shanghai_disney", "hongkong_disney"]
 AttractionCategory = Literal[
     "thrill_ride", "family_ride", "show", "character_meet", "dining", "shopping", "parade"
@@ -42,10 +46,18 @@ class RouteItem(BaseModel):
 
 
 class AIConfig(BaseModel):
-    """用户自定义 AI 配置，每次请求携带，后端不存储"""
-    auth_token: str
-    base_url: str = "https://api.anthropic.com"
-    model: str = "claude-sonnet-4-6"
+    """用户自定义 AI 配置，每次请求携带，后端不存储。"""
+
+    source: AIConfigSource = "custom"
+    api_key: str = ""
+    base_url: str = ""
+    api_mode: APIMode = "anthropic"
+    model_id: str = ""
+    internal_code: str | None = None
+
+    # 兼容旧版前端存储字段
+    auth_token: str | None = None
+    model: str | None = None
 
 
 class CreateSessionRequest(PlanningInfo):

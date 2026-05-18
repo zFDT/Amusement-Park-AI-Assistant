@@ -115,10 +115,20 @@ export interface Location {
   label?: string
 }
 
+export type APIMode = 'openai' | 'openai-responses' | 'ollama' | 'anthropic' | 'gemini'
+export type AIConfigSource = 'custom' | 'internal'
+
 export interface AIConfig {
-  authToken: string
-  baseUrl: string
-  model: string
+  source?: AIConfigSource
+  apiKey?: string
+  baseUrl?: string
+  apiMode?: APIMode
+  modelId?: string
+  internalCode?: string | null
+
+  // legacy fields for backward compatibility
+  authToken?: string
+  model?: string
 }
 
 export interface ChatRequest {

@@ -1,4 +1,5 @@
 import type { PlanningInfo, WaitTimesResponse, RouteItem, AIConfig } from '@/types'
+import { toServerAIConfig } from '@/services/aiConfig'
 
 const BASE_URL = '/api'
 
@@ -54,11 +55,7 @@ export function createSession(planningInfo: PlanningInfo, aiConfig?: AIConfig | 
     body: JSON.stringify({
       ...planningInfo,
       user_id: userId,
-      ai_config: aiConfig ? {
-        auth_token: aiConfig.authToken,
-        base_url: aiConfig.baseUrl,
-        model: aiConfig.model,
-      } : undefined,
+      ai_config: toServerAIConfig(aiConfig),
     }),
   })
 }

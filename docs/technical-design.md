@@ -420,7 +420,21 @@ ANTHROPIC_API_KEY=sk-ant-...
 DATABASE_URL=postgresql://user:pass@localhost:5432/youyuan
 REDIS_URL=redis://localhost:6379
 QUEUE_TIMES_API_KEY=  # queue-times.com 免费版无需 key
+CORS_ORIGINS=["http://localhost:5173"]
+AI_INTERNAL_PROFILES=[]
 
 # 可选
-CORS_ORIGINS=http://localhost:5173,https://yourdomain.com
 ```
+
+## 八、AI 协议支持
+
+前端统一收敛为以下配置字段：
+
+- `source`：`custom` / `internal`
+- `apiKey`
+- `baseUrl`
+- `apiMode`：`openai` / `openai-responses` / `ollama` / `anthropic` / `gemini`
+- `modelId`
+- `internalCode`
+
+后端会根据 `apiMode` 选择对应的请求协议与流式解析方式；若 `source=internal`，则从 `AI_INTERNAL_PROFILES` 中按 `code` 匹配配置。

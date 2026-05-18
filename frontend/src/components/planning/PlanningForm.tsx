@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronRight, Users, Calendar, Heart, Star } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { Badge } from '@/components/ui/Badge'
 import { createSession } from '@/services/api'
 import { useAppStore } from '@/store/sessionStore'
 import type { PlanningInfo, PreferenceTag, PartyMember, ParkId } from '@/types'
@@ -52,7 +51,6 @@ export function PlanningForm({ parkId }: PlanningFormProps) {
         : [...f.preferences, pref],
     }))
   }
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
@@ -136,26 +134,36 @@ export function PlanningForm({ parkId }: PlanningFormProps) {
         </h2>
         <div className="grid grid-cols-3 gap-3">
           {[
-            { key: 'adults', label: '成人', emoji: '🧑' },
-            { key: 'children', label: '儿童', emoji: '👦' },
-            { key: 'elderly', label: '老人', emoji: '👴' },
+            { key: 'adults' as const, label: '成人', emoji: '🧑' },
+            { key: 'children' as const, label: '儿童', emoji: '👦' },
+            { key: 'elderly' as const, label: '老人', emoji: '👴' },
           ].map(({ key, label, emoji }) => (
             <div key={key} className="text-center">
               <label className="block text-xs text-gray-500 mb-1">{emoji} {label}</label>
               <div className="flex items-center justify-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setForm((f) => ({ ...f, [key]: Math.max(0, (f as Record<string, number>)[key] - 1) }))}
+                  onClick={() =>
+                    setForm((f) => ({
+                      ...f,
+                      [key]: Math.max(0, f[key] - 1),
+                    }))
+                  }
                   className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold transition-colors"
                 >
                   −
                 </button>
                 <span className="w-6 text-center text-sm font-medium">
-                  {(form as Record<string, number>)[key]}
+                  {form[key]}
                 </span>
                 <button
                   type="button"
-                  onClick={() => setForm((f) => ({ ...f, [key]: (f as Record<string, number>)[key] + 1 }))}
+                  onClick={() =>
+                    setForm((f) => ({
+                      ...f,
+                      [key]: f[key] + 1,
+                    }))
+                  }
                   className="w-8 h-8 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold transition-colors"
                 >
                   +

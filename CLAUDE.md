@@ -8,6 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 后端 Python 虚拟环境在 `backend/.venv/`，Windows 激活命令为 `.venv/Scripts/activate`。
 - **每完成一次完整的功能修改/优化/修复后，必须立即用中文进行 git commit 提交**，格式：`feat/fix/refactor/docs(模块): 简短描述`。例：`feat(用户): 新增登录和游园记录管理`、`fix(排队): 修复香港迪士尼 park_id 错误`。
 - **每次代码修改后必须同步更新相关文档**：涉及 API/模型/脚本变更时更新 `docs/technical-design.md`；涉及用户可见功能或运行命令变更时更新 `README.md`；涉及开发约束/架构/命令变更时更新本文件（`CLAUDE.md`）。文档更新应与代码变更在同一次 commit 中提交。
+- Windows 一键启动脚本已统一为根目录 `start-dev.bat`（内部调用 `start-dev.ps1`），默认后端使用 `8001`，前端使用 `5173`，并自动设置 `VITE_API_PROXY_TARGET`。
 
 ---
 
@@ -33,7 +34,7 @@ pip install -r requirements.txt
 python -m scripts.init_db
 
 # 启动开发服务器（热重载）
-uvicorn main:app --reload --port 8000
+uvicorn main:app --reload --port 8001
 
 # 采集小红书攻略（需要 Chrome + DrissionPage）
 python -m scripts.strategy_collector.collect --park hongkong_disney --limit 20
@@ -51,7 +52,7 @@ python -m scripts.migrate_strategy_fields
 ```bash
 cd frontend
 yarn install      # 安装依赖
-yarn dev          # 开发服务器 :5173，自动代理 /api -> :8000
+VITE_API_PROXY_TARGET=http://localhost:8001 yarn dev          # 开发服务器 :5173，自动代理 /api -> :8001
 yarn build        # TypeScript 编译 + Vite 构建
 ```
 
@@ -75,7 +76,7 @@ yarn build        # TypeScript 编译 + Vite 构建
 2. `POST /api/chat/stream`：从 Redis 读取 session 和消息历史，重新拉取排队数据，调用 `stream_chat_response()` 以 SSE 格式流式返回。AI 回复中若包含 ` ```route ``` ` 代码块，解析后额外发送 `route_update` 事件。
 
 **AI 客户端**（`services/ai_service.py`）：
-- 支持 per-request AI 配置（`AIConfig`：`auth_token` + `base_url` + `model`），优先使用用户传入的配置，否则使用 `settings.anthropic_api_key`。这是支持用户自带 Key 和自定义代理地址的核心机制。
+- 支持 per-request AI 配置（`AIConfig`：`source` + `api_key` + `base_url` + `api_mode` + `model_id`，兼容旧字段 `auth_token` / `model`），并支持 `source=internal` 从 `AI_INTERNAL_PROFILES` 中按内测码读取预置配置。
 
 **System Prompt 构建**（`services/prompt_builder.py`）：
 - `build_system_prompt()` 将用户规划信息、实时排队 JSON、已完成项目、当前位置、攻略摘要（最多 5 条）拼装成完整 System Prompt，每次对话都重新构建。

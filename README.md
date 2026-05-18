@@ -11,7 +11,8 @@ AI 驱动的迪士尼乐园游园路线规划助理。整合实时排队数据�
 - 游前规划：填写日期、人员构成、兴趣偏好，AI 生成完整路线
 - 对话式调整：游园中随时告知变化，AI 实时重新规划
 - 实时排队：每 5 分钟自动刷新，颜色编码直观展示
-- 自定义 AI Key：支持填入自己的 Anthropic API Key 和代理地址
+- 自定义 AI Key：支持 DeepSeek / Qwen / OpenAI / Claude / Gemini / Grok / Kimi / MiniMax 等多协议配置
+- 内测码模式：可通过 `vip666` 等内测码直接启用服务端预置 AI 配置
 
 ---
 
@@ -27,6 +28,15 @@ AI 驱动的迪士尼乐园游园路线规划助理。整合实时排队数据�
   - 安装完成后 `docker --version` 和 `docker-compose --version` 均可用
 
 > **注意**：本项目前端包管理使用 `yarn`（当前机器 npm 与 Node 24 存在兼容性问题）。
+
+### Windows 一键启动
+
+双击项目根目录下的 `start-dev.bat` 即可自动完成：
+
+- 启动 Docker Compose 的 PostgreSQL + Redis
+- 启动后端（默认 `8001`，自动规避被占用端口）
+- 启动前端（默认 `5173`）
+- 自动打开浏览器访问前端页面
 
 ### 1. 启动数据库服务
 
@@ -53,6 +63,8 @@ cp .env.example .env
 ANTHROPIC_API_KEY=sk-ant-your-key-here   # 可选，用户也可在前端自行填写
 DATABASE_URL=postgresql+asyncpg://youyuan:youyuan@localhost:5432/youyuan
 REDIS_URL=redis://localhost:6379
+CORS_ORIGINS=["http://localhost:5173"]
+AI_INTERNAL_PROFILES=[]
 ```
 
 ### 3. 初始化数据库
@@ -71,10 +83,10 @@ python -m scripts.init_db
 
 ```bash
 cd backend
-uvicorn main:app --reload --port 8000
+uvicorn main:app --reload --port 8001
 ```
 
-访问 [http://localhost:8000/docs](http://localhost:8000/docs) 查看 API 文档。
+访问 [http://localhost:8001/docs](http://localhost:8001/docs) 查看 API 文档。
 
 ### 5. 启动前端
 
@@ -82,6 +94,8 @@ uvicorn main:app --reload --port 8000
 cd frontend
 yarn dev
 ```
+
+如果你是手动启动前端开发服务器，并希望直连本地后端，可以先设置：`VITE_API_PROXY_TARGET=http://localhost:8001`
 
 访问 [http://localhost:5173](http://localhost:5173)
 
@@ -125,6 +139,27 @@ python -m scripts.strategy_collector.redist --park hongkong_disney
 - AI 提炼使用 Claude Haiku 视觉模型，分析图文内容生成100-150字实用摘要
 - 摘要注入 AI 上下文时比原始正文截取更精准，显著提升路线规划质量
 - 建议管理员定期执行（每周一次），无需用户触发
+
+---
+
+## AI 配置说明
+
+当前前端支持以下协议/模式：
+
+- `openai`：`/chat/completions`
+- `openai-responses`：`/responses`
+- `ollama`：`/api/chat`
+- `anthropic`：`/v1/messages`
+- `gemini`：`/v1beta/models/{model}:streamGenerateContent?alt=sse`
+
+推荐填写字段：
+
+- `Base URL`
+- `API Key`
+- `API Mode`
+- `Model ID`
+
+如果选择“内测码”模式并输入 `vip666`，后端会从 `AI_INTERNAL_PROFILES` 里查找对应配置；输入错误则会返回配置错误。
 
 ---
 

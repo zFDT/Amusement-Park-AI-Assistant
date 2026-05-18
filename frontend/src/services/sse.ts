@@ -1,4 +1,5 @@
-import type { ChatRequest, RouteItem, AIConfig } from '@/types'
+import type { ChatRequest, RouteItem } from '@/types'
+import { toServerAIConfig } from '@/services/aiConfig'
 
 type SSEChunk =
   | { type: 'text'; content: string }
@@ -18,11 +19,7 @@ export async function streamChat(
       session_id: request.sessionId,
       message: request.message,
       current_location: request.currentLocation,
-      ai_config: request.aiConfig ? {
-        auth_token: request.aiConfig.authToken,
-        base_url: request.aiConfig.baseUrl,
-        model: request.aiConfig.model,
-      } : undefined,
+      ai_config: toServerAIConfig(request.aiConfig),
     }),
     signal,
   })

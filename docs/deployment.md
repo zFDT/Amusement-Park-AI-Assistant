@@ -32,6 +32,8 @@ yarn dev       # 启动开发服务器
 yarn build     # 构建生产包
 ```
 
+也可以直接在项目根目录双击 `start-dev.bat`，一键启动数据库、后端和前端开发环境。
+
 ---
 
 ## 二、云服务器部署（Linux）
@@ -75,7 +77,7 @@ cd youyuan-assistant
 
 # 2. 配置环境变量
 cp backend/.env.example backend/.env
-vim backend/.env   # 填入 ANTHROPIC_API_KEY 等
+vim backend/.env   # 填入 ANTHROPIC_API_KEY / AI_INTERNAL_PROFILES 等
 
 # 3. 构建前端
 cd frontend && yarn install && yarn build
