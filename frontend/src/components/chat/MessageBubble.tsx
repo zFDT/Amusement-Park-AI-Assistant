@@ -1,9 +1,31 @@
-import { Clock, MapPin } from 'lucide-react'
-import type { Message } from '@/types'
+import { Clock, MapPin, Star, UtensilsCrossed, Coffee, Zap } from 'lucide-react'
+import type { Message, RouteItem } from '@/types'
 import { cn } from '@/components/ui/utils'
 
 interface MessageBubbleProps {
   message: Message
+}
+
+function RouteItemTypeIcon({ type }: { type: RouteItem['type'] }) {
+  switch (type) {
+    case 'show':
+      return <Star className="w-3 h-3 text-purple-500 flex-shrink-0" />
+    case 'dining':
+      return <UtensilsCrossed className="w-3 h-3 text-amber-500 flex-shrink-0" />
+    case 'break':
+      return <Coffee className="w-3 h-3 text-gray-400 flex-shrink-0" />
+    default:
+      return <Zap className="w-3 h-3 text-blue-500 flex-shrink-0" />
+  }
+}
+
+function routeItemNameColor(type: RouteItem['type']): string {
+  switch (type) {
+    case 'show': return 'text-purple-700'
+    case 'dining': return 'text-amber-700'
+    case 'break': return 'text-gray-500'
+    default: return 'text-gray-800'
+  }
 }
 
 export function MessageBubble({ message }: MessageBubbleProps) {
@@ -42,14 +64,27 @@ export function MessageBubble({ message }: MessageBubbleProps) {
             </div>
             <div className="divide-y divide-gray-50">
               {message.route.map((item, i) => (
-                <div key={i} className="flex items-start gap-3 px-3 py-2.5">
+                <div
+                  key={i}
+                  className={cn(
+                    'flex items-start gap-3 px-3 py-2.5',
+                    item.type === 'break' && 'bg-gray-50/60',
+                    item.type === 'show' && 'bg-purple-50/40',
+                    item.type === 'dining' && 'bg-amber-50/40',
+                  )}
+                >
                   <div className="flex items-center gap-1 text-xs text-gray-400 w-12 flex-shrink-0 mt-0.5">
                     <Clock className="w-3 h-3" />
                     {item.time}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-800 truncate">{item.attractionName}</p>
-                    {item.note && <p className="text-xs text-gray-500 mt-0.5">{item.note}</p>}
+                    <div className="flex items-center gap-1.5">
+                      <RouteItemTypeIcon type={item.type} />
+                      <p className={cn('text-sm font-medium truncate', routeItemNameColor(item.type))}>
+                        {item.attractionName}
+                      </p>
+                    </div>
+                    {item.note && <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{item.note}</p>}
                   </div>
                   {item.estimatedWait > 0 && (
                     <span className="text-xs text-orange-600 font-medium flex-shrink-0">

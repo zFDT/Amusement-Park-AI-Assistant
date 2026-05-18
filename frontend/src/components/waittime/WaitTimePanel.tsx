@@ -3,18 +3,18 @@ import { useWaitTimes } from '@/hooks/useWaitTimes'
 import { Badge } from '@/components/ui/Badge'
 import type { WaitStatus } from '@/types'
 
-function waitBadgeVariant(status: WaitStatus, minutes: number | null): 'green' | 'yellow' | 'red' | 'gray' {
+function waitBadgeVariant(status: WaitStatus, minutes: number | null | undefined): 'green' | 'yellow' | 'red' | 'gray' {
   if (status === 'closed' || status === 'down') return 'gray'
-  if (minutes === null) return 'gray'
+  if (minutes == null) return 'gray'
   if (minutes < 30) return 'green'
   if (minutes < 60) return 'yellow'
   return 'red'
 }
 
-function waitLabel(status: WaitStatus, minutes: number | null): string {
+function waitLabel(status: WaitStatus, minutes: number | null | undefined): string {
   if (status === 'closed') return '关闭'
   if (status === 'down') return '故障'
-  if (minutes === null) return '未知'
+  if (minutes == null) return '未知'
   if (minutes === 0) return '无需等待'
   return `${minutes} 分钟`
 }
