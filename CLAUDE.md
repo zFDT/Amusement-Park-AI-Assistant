@@ -7,6 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **前端包管理必须用 `yarn`**，不能用 `npm` 或 `npx`。当前机器 npm 11 与 Node 24 存在兼容性问题（minipass-sized 模块报错），yarn 已通过 corepack 安装。
 - 后端 Python 虚拟环境在 `backend/.venv/`，Windows 激活命令为 `.venv/Scripts/activate`。
 - **每完成一次完整的功能修改/优化/修复后，必须立即用中文进行 git commit 提交**，格式：`feat/fix/refactor/docs(模块): 简短描述`。例：`feat(用户): 新增登录和游园记录管理`、`fix(排队): 修复香港迪士尼 park_id 错误`。
+- **每次代码修改后必须同步更新相关文档**：涉及 API/模型/脚本变更时更新 `docs/technical-design.md`；涉及用户可见功能或运行命令变更时更新 `README.md`；涉及开发约束/架构/命令变更时更新本文件（`CLAUDE.md`）。文档更新应与代码变更在同一次 commit 中提交。
 
 ---
 
@@ -36,6 +37,13 @@ uvicorn main:app --reload --port 8000
 
 # 采集小红书攻略（需要 Chrome + DrissionPage）
 python -m scripts.strategy_collector.collect --park hongkong_disney --limit 20
+python -m scripts.strategy_collector.collect --park hongkong_disney --no-distill  # 跳过 AI 提炼
+
+# 对已入库攻略补充 AI 提炼摘要（首次迁移后执行）
+python -m scripts.strategy_collector.redist --park hongkong_disney
+
+# 已有数据库迁移（新增 image_urls / ai_summary 字段）
+python -m scripts.migrate_strategy_fields
 ```
 
 ### 前端
@@ -79,7 +87,15 @@ yarn build        # TypeScript 编译 + Vite 构建
 **数据库模型**（`models/park.py`）：
 - `Park` / `Attraction` / `Strategy` 三张表，用 SQLAlchemy async。
 - `Attraction.queue_times_ride_id` 是与 queue-times.com 数据关联的外键。
+- `Strategy` 额外字段：`image_urls`（JSON，图片 CDN URL 列表）、`ai_summary`（Text，Claude Haiku 提炼的摘要）。
 - Session 和消息历史**不入库**，只存 Redis。
+
+**攻略采集与提炼**（`scripts/strategy_collector/`）：
+
+- `collect.py`：DrissionPage 驱动 Chrome，从 `window.__INITIAL_STATE__` 提取搜索结果和详情（参考 xiaohongshu-mcp 方案，比 DOM 选择器更稳定）。采集完成后自动调用 AI 提炼。
+- `distill.py`：调用 Claude Haiku 视觉模型，分析笔记正文 + 图片（最多4张），生成100-150字实用摘要存入 `ai_summary`。
+- `redist.py`：对已入库但缺少摘要的攻略批量补充提炼。
+- `strategy_service.py`：注入 System Prompt 时优先使用 `ai_summary`，降级到原始正文截取。
 
 **乐园静态数据**（`app/data/*.json`）：
 - `hongkong_disney.json` 和 `shanghai_disney.json` 是项目数据的权威来源，`init_db.py` 读取这两个文件导入数据库。

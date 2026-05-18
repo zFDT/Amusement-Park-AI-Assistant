@@ -2,6 +2,11 @@
 香港/上海迪士尼乐园攻略采集器
 基于 DrissionPage（Chrome 自动化），采集小红书图文攻略并入库。
 
+核心改进（参考 xiaohongshu-mcp 项目）：
+- 使用 window.__INITIAL_STATE__ 提取数据，比 DOM 选择器更稳定可靠
+- 搜索结果直接从 JS 状态对象读取，包含 xsecToken
+- 详情页通过 noteDetailMap 获取完整图片列表和互动数据
+
 运行方式：
     python -m scripts.strategy_collector.collect --park hongkong_disney
     python -m scripts.strategy_collector.collect --park hongkong_disney --limit 30
@@ -14,6 +19,7 @@
 
 import asyncio
 import hashlib
+import json
 import logging
 import sys
 import time
@@ -53,7 +59,6 @@ PARK_KEYWORDS = {
     ],
 }
 
-# 各乐园项目名称，用于从文本中提取提及的项目
 _ATTRACTIONS = {
     "hongkong_disney": [
         "迷离庄园", "大灰熊山谷", "超空间山峰", "钢铁侠", "蚁侠",
@@ -66,6 +71,9 @@ _ATTRACTIONS = {
         "七个小矮人", "小飞侠", "疯狂动物城", "巴斯光年",
     ],
 }
+
+# 详情页之间的间隔，避免触发反爬
+_DETAIL_INTERVAL = 1.5
 
 
 def create_browser() -> "ChromiumPage":
@@ -106,13 +114,40 @@ def _extract_mentioned_attractions(content: str, park_id: str) -> list[str]:
     return [kw for kw in keywords if kw in content]
 
 
-def _get_detail_by_click(page: "ChromiumPage", item) -> tuple[str, list[str], int, int]:
+def _wait_initial_state(page: "ChromiumPage", timeout: int = 10) -> bool:
+    """等待 window.__INITIAL_STATE__ 加载完成"""
+    for _ in range(timeout * 2):
+        try:
+            ready = page.run_js("return typeof window.__INITIAL_STATE__ !== 'undefined'")
+            if ready:
+                return True
+        except Exception:
+            pass
+        time.sleep(0.5)
+    return False
+
+
+def _run_js(page: "ChromiumPage", js: str):
+    """执行 JS，返回解析后的 Python 对象；失败返回 None"""
+    try:
+        raw = page.run_js(js)
+        if raw is None or raw == "null" or raw == "undefined":
+            return None
+        return json.loads(raw) if isinstance(raw, str) else raw
+    except Exception as e:
+        logger.debug(f"JS 执行失败: {e}")
+        return None
+
+
+def _get_detail(page: "ChromiumPage", feed_id: str, xsec_token: str) -> tuple[str, list[str], int, int]:
     """
-    点击笔记卡片，进入详情弹窗，提取：
-    - content: 正文文字
-    - images: 图片 URL 列表（xhscdn 域名）
+    导航到笔记详情页，从 __INITIAL_STATE__.note.noteDetailMap 提取：
+    - content: 正文（desc 字段）
+    - images: 图片 URL 列表（imageList[].urlDefault）
     - collects: 收藏数
     - comments: 评论数
+
+    参考 xiaohongshu-mcp feed_detail.go 的 URL 格式和数据提取方式。
     """
     content = ""
     images: list[str] = []
@@ -120,106 +155,112 @@ def _get_detail_by_click(page: "ChromiumPage", item) -> tuple[str, list[str], in
     comments = 0
 
     try:
-        item.click()
+        detail_url = (
+            f"https://www.xiaohongshu.com/explore/{feed_id}"
+            f"?xsec_token={xsec_token}&xsec_source=pc_feed"
+        )
+        page.get(detail_url)
         time.sleep(2)
 
-        # 正文
-        desc_el = (
-            page.ele("css:.note-content .desc", timeout=3)
-            or page.ele("css:#detail-desc", timeout=2)
-            or page.ele("css:[class*='note-text']", timeout=2)
-        )
-        if desc_el:
-            content = desc_el.text
+        if not _wait_initial_state(page):
+            logger.warning(f"详情页 __INITIAL_STATE__ 未加载: {feed_id}")
+            return content, images, collects, comments
 
-        # 图片：取所有 xhscdn 图片，去重保序
-        seen: set[str] = set()
-        for img in page.eles("css:.note-content img", timeout=2):
-            src = img.attr("src") or ""
-            if "xhscdn" in src and src not in seen:
-                seen.add(src)
-                images.append(src)
-        # 备用：swiper 轮播图
-        if not images:
-            for img in page.eles("css:.swiper-slide img", timeout=1):
-                src = img.attr("src") or ""
-                if src and src not in seen:
-                    seen.add(src)
-                    images.append(src)
+        # 安全地访问嵌套属性，避免 JS 注入（feed_id 来自 XHS 自身数据）
+        safe_id = feed_id.replace("'", "").replace('"', "")
+        detail = _run_js(page, f"""
+            return JSON.stringify((() => {{
+                const state = window.__INITIAL_STATE__;
+                const noteMap = state?.note?.noteDetailMap;
+                if (!noteMap) return null;
+                const entry = noteMap['{safe_id}'];
+                return entry?.note || null;
+            }})())
+        """)
 
-        # 互动数据（收藏、评论）
-        collect_el = page.ele("css:[class*='collect'] [class*='count']", timeout=1)
-        if collect_el:
-            collects = _parse_count(collect_el.text)
+        if not detail:
+            return content, images, collects, comments
 
-        comment_el = page.ele("css:[class*='comment'] [class*='count']", timeout=1)
-        if comment_el:
-            comments = _parse_count(comment_el.text)
+        content = detail.get("desc", "")
+
+        # 提取所有图片（urlDefault 优先，fallback urlPre）
+        for img in detail.get("imageList", []):
+            url = img.get("urlDefault") or img.get("urlPre", "")
+            if url:
+                images.append(url)
+
+        interact = detail.get("interactInfo", {})
+        collects = _parse_count(interact.get("collectedCount", "0"))
+        comments = _parse_count(interact.get("commentCount", "0"))
 
     except Exception as e:
-        logger.debug(f"获取详情出错: {e}")
-    finally:
-        # 关闭详情弹窗
-        try:
-            close_btn = page.ele("css:[class*='close']", timeout=1)
-            if close_btn:
-                close_btn.click()
-            else:
-                page.actions.key_down("ESCAPE").key_up("ESCAPE")
-        except Exception:
-            pass
-        time.sleep(0.5)
+        logger.debug(f"获取详情出错 {feed_id}: {e}")
 
     return content, images, collects, comments
 
 
 def search_xhs(page: "ChromiumPage", keyword: str, limit: int = 20) -> list[dict]:
-    """搜索小红书，返回笔记列表（含图片 URL）"""
+    """
+    搜索小红书，从 window.__INITIAL_STATE__.search.feeds 提取结果。
+    参考 xiaohongshu-mcp search.go 的数据提取逻辑。
+    """
     results = []
     try:
-        search_url = f"https://www.xiaohongshu.com/search_result?keyword={keyword}&type=51"
+        search_url = f"https://www.xiaohongshu.com/search_result?keyword={keyword}&source=web_explore_feed"
         page.get(search_url)
         time.sleep(3)
 
-        for _ in range(15):
-            sections = page.eles("css:.note-item", timeout=2)
-            if sections:
-                break
-            time.sleep(1)
+        if not _wait_initial_state(page):
+            logger.warning(f"搜索页 __INITIAL_STATE__ 未加载，关键词：{keyword}")
+            return results
 
-        note_items = page.eles("css:.note-item")
-        logger.info(f"找到 {len(note_items)} 条笔记，关键词：{keyword}")
+        # 兼容 .value 和 ._value 两种属性名（参考 xiaohongshu-mcp feeds.go）
+        feeds = _run_js(page, """
+            return JSON.stringify((() => {
+                const state = window.__INITIAL_STATE__;
+                if (!state?.search?.feeds) return null;
+                const f = state.search.feeds;
+                return f.value !== undefined ? f.value : f._value;
+            })())
+        """)
 
-        for idx, item in enumerate(note_items[:limit]):
+        if not feeds:
+            logger.warning(f"未找到搜索结果，关键词：{keyword}")
+            return results
+
+        logger.info(f"找到 {len(feeds)} 条笔记，关键词：{keyword}")
+
+        for feed in feeds[:limit]:
             try:
-                title_el = item.ele("css:.title", timeout=1)
-                title = title_el.text if title_el else ""
+                feed_id = feed.get("id", "")
+                xsec_token = feed.get("xsecToken", "")
+                if not feed_id:
+                    continue
 
-                author_el = item.ele("css:.author-wrapper .name", timeout=1)
-                author = author_el.text if author_el else ""
+                note_card = feed.get("noteCard", {})
+                title = note_card.get("displayTitle", "")
+                user = note_card.get("user", {})
+                author = user.get("nickname", "") or user.get("nickName", "")
+                interact = note_card.get("interactInfo", {})
+                likes = _parse_count(interact.get("likedCount", "0"))
+                source_url = f"https://www.xiaohongshu.com/explore/{feed_id}"
 
-                likes_el = item.ele("css:.like-wrapper .count", timeout=1)
-                likes_text = likes_el.text if likes_el else "0"
-
-                link_el = item.ele("css:a", timeout=1)
-                href = link_el.attr("href") if link_el else ""
-                note_url = href if href.startswith("http") else f"https://www.xiaohongshu.com{href}" if href else ""
-
-                content, images, collects, comments = _get_detail_by_click(page, item)
+                content, images, collects, comments = _get_detail(page, feed_id, xsec_token)
+                time.sleep(_DETAIL_INTERVAL)
 
                 results.append({
-                    "id": href.split("/")[-1] if href else "",
+                    "id": feed_id,
                     "title": title,
                     "content": content or title,
                     "author": author,
-                    "likes": _parse_count(likes_text),
+                    "likes": likes,
                     "collects": collects,
                     "comments": comments,
-                    "source_url": note_url,
+                    "source_url": source_url,
                     "images": images,
                 })
             except Exception as e:
-                logger.debug(f"解析笔记 {idx} 出错: {e}")
+                logger.debug(f"解析 feed 出错: {e}")
                 continue
 
     except Exception as e:
@@ -241,7 +282,7 @@ async def save_strategies(park_id: str, items: list[dict]) -> list[dict]:
                 continue
 
             strategy_id = hashlib.md5(source_url.encode()).hexdigest()
-            item["id"] = strategy_id  # 回写 id，供提炼时使用
+            item["id"] = strategy_id
 
             existing = await session.get(Strategy, strategy_id)
             if existing:

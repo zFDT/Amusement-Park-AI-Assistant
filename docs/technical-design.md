@@ -1,6 +1,6 @@
 # 游园助理 - 技术设计文档
 
-**版本**: v1.0  
+**版本**: v1.1  
 **日期**: 2026-05-18
 
 ---
@@ -90,29 +90,33 @@
 ├── backend/                       # FastAPI 后端
 │   ├── app/
 │   │   ├── api/
-│   │   │   ├── routes/
-│   │   │   │   ├── chat.py        # 对话 API (SSE)
-│   │   │   │   ├── parks.py       # 乐园/项目数据 API
-│   │   │   │   ├── waittimes.py   # 排队时间 API
-│   │   │   │   └── sessions.py    # Session 管理 API
-│   │   │   └── deps.py            # 依赖注入
+│   │   │   └── routes/
+│   │   │       ├── chat.py        # 对话 API (SSE) + Session 管理
+│   │   │       ├── parks.py       # 乐园/项目数据 API
+│   │   │       └── waittimes.py   # 排队时间 API
 │   │   ├── core/
 │   │   │   ├── config.py          # 配置管理
 │   │   │   ├── database.py        # 数据库连接
 │   │   │   └── redis_client.py    # Redis 连接
 │   │   ├── models/
-│   │   │   ├── park.py            # 数据库模型
-│   │   │   ├── session.py
-│   │   │   └── message.py
+│   │   │   └── park.py            # Park / Attraction / Strategy 模型
 │   │   ├── schemas/
 │   │   │   └── *.py               # Pydantic 请求/响应模型
 │   │   ├── services/
 │   │   │   ├── ai_service.py      # Claude API 调用
 │   │   │   ├── waittime_service.py # queue-times.com 集成
-│   │   │   └── prompt_builder.py  # System Prompt 构建
+│   │   │   ├── prompt_builder.py  # System Prompt 构建
+│   │   │   └── strategy_service.py # 攻略摘要注入
 │   │   └── data/
-│   │       ├── shanghai_disney.json  # 上海迪士尼项目静态数据
-│   │       └── hongkong_disney.json  # 香港迪士尼项目静态数据
+│   │       ├── shanghai_disney.json
+│   │       └── hongkong_disney.json
+│   ├── scripts/
+│   │   ├── init_db.py             # 数据库初始化
+│   │   ├── migrate_strategy_fields.py  # 字段迁移
+│   │   └── strategy_collector/
+│   │       ├── collect.py         # 采集主程序
+│   │       ├── distill.py         # AI 视觉提炼
+│   │       └── redist.py          # 补充提炼
 │   ├── main.py
 │   ├── requirements.txt
 │   └── .env.example
@@ -300,10 +304,56 @@ Response:
 ### 4.2 Redis 缓存策略
 
 | Key 模式 | 内容 | TTL |
-|---------|------|-----|
+| --- | --- | --- |
 | `waittimes:{park_id}` | 排队时间完整数据 | 5 分钟 |
 | `session:{session_id}` | 用户会话状态 | 24 小时 |
 | `messages:{session_id}` | 对话历史（最近 20 条） | 24 小时 |
+
+### 4.3 Strategy 数据库模型
+
+`strategies` 表存储从小红书采集的游园攻略：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `id` | String(100) PK | source_url 的 MD5 |
+| `park_id` | String(50) FK | 关联乐园 |
+| `platform` | String(20) | `xhs`（小红书） |
+| `source_url` | String(500) | 笔记原始链接 |
+| `title` | String(500) | 笔记标题 |
+| `content` | Text | 笔记正文 |
+| `author` | String(200) | 作者昵称 |
+| `likes` | Integer | 点赞数 |
+| `collects` | Integer | 收藏数 |
+| `comments` | Integer | 评论数 |
+| `tags` | JSON | 关键词标签 |
+| `mentioned_attractions` | JSON | 文中提及的项目名称 |
+| `image_urls` | JSON | 图片 CDN URL 列表 |
+| `ai_summary` | Text | Claude Haiku 提炼的摘要（100-150字） |
+| `collected_at` | DateTime | 采集时间 |
+| `is_active` | Boolean | 是否启用 |
+
+### 4.4 攻略采集与 AI 提炼流程
+
+```text
+DrissionPage (Chrome)
+  → 搜索关键词（香港迪士尼攻略 等5个关键词）
+  → 从 window.__INITIAL_STATE__.search.feeds 提取笔记列表（含 xsecToken）
+  → 逐条导航到 /explore/{feedID}?xsec_token=...
+  → 从 window.__INITIAL_STATE__.note.noteDetailMap 提取正文 + imageList
+  → 入库（Strategy 表）
+
+Claude Haiku（视觉模型）
+  → 输入：笔记标题 + 正文 + 图片（最多4张，base64）
+  → 输出：100-150字实用摘要（游玩顺序、排队技巧、餐饮建议等）
+  → 写入 ai_summary 字段
+
+System Prompt 注入
+  → strategy_service.get_strategy_snippets()
+  → 优先使用 ai_summary，降级到 content[:200]
+  → 取点赞数最高的5条注入上下文
+```
+
+**参考**：数据提取方案参考 [xiaohongshu-mcp](https://github.com/xpzouying/xiaohongshu-mcp)（Go + go-rod），本项目用 Python + DrissionPage 实现相同逻辑。
 
 ---
 

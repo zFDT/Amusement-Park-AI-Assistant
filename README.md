@@ -89,17 +89,42 @@ yarn dev
 
 ## 采集小红书攻略（可选）
 
-攻略数据会注入 AI 上下文，提升推荐质量。需要安装 Chrome 浏览器和 DrissionPage。
+攻略数据会注入 AI 上下文，提升推荐质量。采集器使用 DrissionPage 驱动 Chrome，通过 `window.__INITIAL_STATE__` 提取数据（比 DOM 选择器更稳定，参考 [xiaohongshu-mcp](https://github.com/xpzouying/xiaohongshu-mcp) 方案）。
+
+**前置条件**：Chrome 浏览器 + DrissionPage
 
 ```bash
 cd backend
 pip install DrissionPage
-
-# 采集香港迪士尼攻略（会弹出 Chrome 窗口，首次需手动登录小红书）
-python -m scripts.strategy_collector.collect --park hongkong_disney --limit 20
 ```
 
-建议管理员定期执行（每周一次），无需用户触发。
+**首次使用（已有数据库需先迁移）**：
+
+```bash
+# 为 strategies 表添加 image_urls / ai_summary 字段
+python -m scripts.migrate_strategy_fields
+```
+
+**采集攻略**：
+
+```bash
+# 采集香港迪士尼攻略（会弹出 Chrome 窗口，首次需手动登录小红书）
+# 采集完成后自动调用 Claude Haiku 对图文内容进行 AI 提炼
+python -m scripts.strategy_collector.collect --park hongkong_disney --limit 20
+
+# 跳过 AI 提炼（节省 API 费用，适合批量采集后统一处理）
+python -m scripts.strategy_collector.collect --park hongkong_disney --no-distill
+
+# 对已入库但缺少摘要的攻略补充 AI 提炼
+python -m scripts.strategy_collector.redist --park hongkong_disney
+```
+
+**说明**：
+
+- 采集器会获取笔记正文 + 全部图片 URL + 点赞/收藏/评论数
+- AI 提炼使用 Claude Haiku 视觉模型，分析图文内容生成100-150字实用摘要
+- 摘要注入 AI 上下文时比原始正文截取更精准，显著提升路线规划质量
+- 建议管理员定期执行（每周一次），无需用户触发
 
 ---
 
@@ -131,8 +156,12 @@ python -m scripts.strategy_collector.collect --park hongkong_disney --limit 20
 │   │   ├── schemas/         # Pydantic 请求/响应模型
 │   │   └── services/        # AI、排队数据、攻略服务
 │   └── scripts/
-│       ├── init_db.py       # 数据库初始化
-│       └── strategy_collector/  # 小红书攻略采集器
+│       ├── init_db.py               # 数据库初始化
+│       ├── migrate_strategy_fields.py  # 字段迁移（新增 image_urls/ai_summary）
+│       └── strategy_collector/      # 小红书攻略采集器
+│           ├── collect.py           # 采集主程序（__INITIAL_STATE__ 方案）
+│           ├── distill.py           # Claude Haiku 视觉提炼模块
+│           └── redist.py            # 已入库攻略补充提炼
 └── docker-compose.yml       # 本地开发数据库
 ```
 
