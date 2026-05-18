@@ -107,7 +107,27 @@ export function getSessionMessages(sessionId: string): Promise<{ sessionId: stri
 }
 
 export function getWaitTimes(parkId: string): Promise<WaitTimesResponse> {
-  return request(`/waittimes/${parkId}`)
+  return request<{
+    park_id: string
+    last_updated: string
+    attractions: Array<{
+      attraction_id: string
+      attraction_name: string | null
+      wait_minutes: number | null
+      status: string
+      last_updated: string
+    }>
+  }>(`/waittimes/${parkId}`).then((r) => ({
+    parkId: r.park_id as WaitTimesResponse['parkId'],
+    lastUpdated: r.last_updated,
+    attractions: r.attractions.map((a) => ({
+      attractionId: a.attraction_id,
+      attractionName: a.attraction_name ?? undefined,
+      waitMinutes: a.wait_minutes,
+      status: a.status as import('@/types').WaitStatus,
+      lastUpdated: a.last_updated,
+    })),
+  }))
 }
 
 export function getAttractions(parkId: string) {

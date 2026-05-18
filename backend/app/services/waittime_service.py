@@ -26,12 +26,24 @@ def _load_ride_id_to_name(park_id: str) -> dict[str, str]:
     if not data_file.exists():
         return {}
     try:
-        attractions = json.loads(data_file.read_text(encoding="utf-8"))
-        return {
-            str(a["queue_times_ride_id"]): a["name"]
-            for a in attractions
-            if a.get("queue_times_ride_id")
-        }
+        data = json.loads(data_file.read_text(encoding="utf-8"))
+        result: dict[str, str] = {}
+
+        def _collect(items: list[dict]) -> None:
+            for a in items:
+                if a.get("queue_times_ride_id") and a.get("name"):
+                    result[str(a["queue_times_ride_id"])] = a["name"]
+
+        # Top-level areas[].attractions[]
+        for area in data.get("areas", []):
+            _collect(area.get("attractions", []))
+        # Top-level shows_and_parades[]
+        _collect(data.get("shows_and_parades", []))
+        # Flat list fallback (shanghai format)
+        if isinstance(data, list):
+            _collect(data)
+
+        return result
     except Exception:
         return {}
 

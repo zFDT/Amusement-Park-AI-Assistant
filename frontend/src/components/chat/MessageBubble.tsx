@@ -28,6 +28,96 @@ function routeItemNameColor(type: RouteItem['type']): string {
   }
 }
 
+function renderInline(text: string): React.ReactNode {
+  const parts = text.split(/(\*\*[^*]+\*\*)/)
+  if (parts.length === 1) return text
+  return (
+    <>
+      {parts.map((part, i) =>
+        part.startsWith('**') && part.endsWith('**')
+          ? <strong key={i} className="font-semibold">{part.slice(2, -2)}</strong>
+          : <span key={i}>{part}</span>
+      )}
+    </>
+  )
+}
+
+function renderMarkdown(text: string): React.ReactNode {
+  const lines = text.split('\n')
+  const nodes: React.ReactNode[] = []
+  let i = 0
+
+  while (i < lines.length) {
+    const line = lines[i]
+
+    if (line.trim() === '') {
+      i++
+      continue
+    }
+
+    // ## / ### heading
+    if (/^#{1,3}\s/.test(line)) {
+      const content = line.replace(/^#{1,3}\s+/, '')
+      nodes.push(
+        <p key={i} className="font-semibold text-sm mt-2 mb-0.5 text-gray-900">
+          {renderInline(content)}
+        </p>
+      )
+      i++
+      continue
+    }
+
+    // bullet list — collect consecutive items
+    if (/^[-*•]\s/.test(line)) {
+      const items: string[] = []
+      while (i < lines.length && /^[-*•]\s/.test(lines[i])) {
+        items.push(lines[i].replace(/^[-*•]\s+/, ''))
+        i++
+      }
+      nodes.push(
+        <ul key={`ul-${i}`} className="my-1 space-y-0.5">
+          {items.map((item, idx) => (
+            <li key={idx} className="flex items-start gap-1.5 text-sm">
+              <span className="mt-2 w-1 h-1 rounded-full bg-gray-500 flex-shrink-0" />
+              <span>{renderInline(item)}</span>
+            </li>
+          ))}
+        </ul>
+      )
+      continue
+    }
+
+    // numbered list
+    if (/^\d+\.\s/.test(line)) {
+      const items: string[] = []
+      while (i < lines.length && /^\d+\.\s/.test(lines[i])) {
+        items.push(lines[i].replace(/^\d+\.\s+/, ''))
+        i++
+      }
+      nodes.push(
+        <ol key={`ol-${i}`} className="my-1 space-y-0.5">
+          {items.map((item, idx) => (
+            <li key={idx} className="flex items-start gap-1.5 text-sm">
+              <span className="flex-shrink-0 text-xs text-gray-400 mt-0.5 w-4">{idx + 1}.</span>
+              <span>{renderInline(item)}</span>
+            </li>
+          ))}
+        </ol>
+      )
+      continue
+    }
+
+    nodes.push(
+      <p key={i} className="text-sm leading-relaxed">
+        {renderInline(line)}
+      </p>
+    )
+    i++
+  }
+
+  return <div className="space-y-1">{nodes}</div>
+}
+
 export function MessageBubble({ message }: MessageBubbleProps) {
   const isUser = message.role === 'user'
 
@@ -41,18 +131,22 @@ export function MessageBubble({ message }: MessageBubbleProps) {
       <div className={cn('max-w-[80%] space-y-2')}>
         <div
           className={cn(
-            'rounded-2xl px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap',
+            'rounded-2xl px-4 py-3',
             isUser
-              ? 'bg-blue-600 text-white rounded-tr-sm'
+              ? 'bg-blue-600 text-white rounded-tr-sm text-sm leading-relaxed whitespace-pre-wrap'
               : 'bg-gray-100 text-gray-800 rounded-tl-sm'
           )}
         >
-          {message.content || (
+          {!message.content ? (
             <span className="inline-flex gap-1">
               <span className="animate-bounce">·</span>
               <span className="animate-bounce [animation-delay:0.1s]">·</span>
               <span className="animate-bounce [animation-delay:0.2s]">·</span>
             </span>
+          ) : isUser ? (
+            message.content
+          ) : (
+            renderMarkdown(message.content)
           )}
         </div>
 
@@ -65,7 +159,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
             <div className="divide-y divide-gray-50">
               {message.route.map((item, i) => (
                 <div
-                  key={i}
+                  key={`${item.attractionId}-${i}`}
                   className={cn(
                     'flex items-start gap-3 px-3 py-2.5',
                     item.type === 'break' && 'bg-gray-50/60',
