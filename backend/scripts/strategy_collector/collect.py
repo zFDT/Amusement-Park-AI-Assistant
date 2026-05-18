@@ -1,10 +1,11 @@
 """
-香港迪士尼乐园攻略采集器
-基于 D:/video22 的小红书采集器改造，专门采集迪士尼游园攻略并入库。
+香港/上海迪士尼乐园攻略采集器
+基于 DrissionPage（Chrome 自动化），采集小红书图文攻略并入库。
 
 运行方式：
     python -m scripts.strategy_collector.collect --park hongkong_disney
     python -m scripts.strategy_collector.collect --park hongkong_disney --limit 30
+    python -m scripts.strategy_collector.collect --park hongkong_disney --no-distill
 
 依赖：
     pip install DrissionPage  （需要 Chrome 浏览器）
@@ -13,14 +14,11 @@
 
 import asyncio
 import hashlib
-import json
 import logging
-import re
 import sys
 import time
 from pathlib import Path
 
-# 确保能 import app 模块
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from app.core.config import settings
@@ -37,7 +35,7 @@ except ImportError:
     logger.warning("DrissionPage not installed. Run: pip install DrissionPage")
 
 BROWSER_DATA_DIR = Path(__file__).parent.parent.parent / "browser_data" / "xhs"
-XHS_PORT = 9521  # 使用不同端口避免与 video22 冲突
+XHS_PORT = 9521
 
 PARK_KEYWORDS = {
     "hongkong_disney": [
@@ -52,6 +50,20 @@ PARK_KEYWORDS = {
         "上海迪士尼游玩路线",
         "上海迪士尼必玩",
         "上海迪士尼一日游",
+    ],
+}
+
+# 各乐园项目名称，用于从文本中提取提及的项目
+_ATTRACTIONS = {
+    "hongkong_disney": [
+        "迷离庄园", "大灰熊山谷", "超空间山峰", "钢铁侠", "蚁侠",
+        "小小世界", "小熊维尼", "冰雪奇缘", "达菲", "灰姑娘",
+        "森林河流", "泰山树屋", "RC飞车", "绿军人", "飞象",
+        "米奇幻想曲", "幻想花园", "童话森林",
+    ],
+    "shanghai_disney": [
+        "创极速光轮", "翱翔", "雷鸣山漂流", "加勒比海盗",
+        "七个小矮人", "小飞侠", "疯狂动物城", "巴斯光年",
     ],
 }
 
@@ -90,30 +102,85 @@ def _parse_count(text: str) -> int:
 
 
 def _extract_mentioned_attractions(content: str, park_id: str) -> list[str]:
-    """从攻略文本中提取提到的项目名称"""
-    hk_attractions = [
-        "迷离庄园", "大灰熊山谷", "超空间山峰", "钢铁侠", "蚁侠",
-        "小小世界", "小熊维尼", "冰雪奇缘", "达菲", "灰姑娘",
-        "森林河流", "泰山树屋", "RC飞车", "绿军人", "飞象",
-        "米奇幻想曲", "幻想花园", "童话森林",
-    ]
-    sh_attractions = [
-        "创极速光轮", "翱翔", "雷鸣山漂流", "加勒比海盗",
-        "七个小矮人", "小飞侠", "疯狂动物城", "巴斯光年",
-    ]
-    keywords = hk_attractions if park_id == "hongkong_disney" else sh_attractions
+    keywords = _ATTRACTIONS.get(park_id, [])
     return [kw for kw in keywords if kw in content]
 
 
+def _get_detail_by_click(page: "ChromiumPage", item) -> tuple[str, list[str], int, int]:
+    """
+    点击笔记卡片，进入详情弹窗，提取：
+    - content: 正文文字
+    - images: 图片 URL 列表（xhscdn 域名）
+    - collects: 收藏数
+    - comments: 评论数
+    """
+    content = ""
+    images: list[str] = []
+    collects = 0
+    comments = 0
+
+    try:
+        item.click()
+        time.sleep(2)
+
+        # 正文
+        desc_el = (
+            page.ele("css:.note-content .desc", timeout=3)
+            or page.ele("css:#detail-desc", timeout=2)
+            or page.ele("css:[class*='note-text']", timeout=2)
+        )
+        if desc_el:
+            content = desc_el.text
+
+        # 图片：取所有 xhscdn 图片，去重保序
+        seen: set[str] = set()
+        for img in page.eles("css:.note-content img", timeout=2):
+            src = img.attr("src") or ""
+            if "xhscdn" in src and src not in seen:
+                seen.add(src)
+                images.append(src)
+        # 备用：swiper 轮播图
+        if not images:
+            for img in page.eles("css:.swiper-slide img", timeout=1):
+                src = img.attr("src") or ""
+                if src and src not in seen:
+                    seen.add(src)
+                    images.append(src)
+
+        # 互动数据（收藏、评论）
+        collect_el = page.ele("css:[class*='collect'] [class*='count']", timeout=1)
+        if collect_el:
+            collects = _parse_count(collect_el.text)
+
+        comment_el = page.ele("css:[class*='comment'] [class*='count']", timeout=1)
+        if comment_el:
+            comments = _parse_count(comment_el.text)
+
+    except Exception as e:
+        logger.debug(f"获取详情出错: {e}")
+    finally:
+        # 关闭详情弹窗
+        try:
+            close_btn = page.ele("css:[class*='close']", timeout=1)
+            if close_btn:
+                close_btn.click()
+            else:
+                page.actions.key_down("ESCAPE").key_up("ESCAPE")
+        except Exception:
+            pass
+        time.sleep(0.5)
+
+    return content, images, collects, comments
+
+
 def search_xhs(page: "ChromiumPage", keyword: str, limit: int = 20) -> list[dict]:
-    """搜索小红书并获取笔记列表"""
+    """搜索小红书，返回笔记列表（含图片 URL）"""
     results = []
     try:
         search_url = f"https://www.xiaohongshu.com/search_result?keyword={keyword}&type=51"
         page.get(search_url)
         time.sleep(3)
 
-        # 等待笔记列表加载
         for _ in range(15):
             sections = page.eles("css:.note-item", timeout=2)
             if sections:
@@ -136,13 +203,9 @@ def search_xhs(page: "ChromiumPage", keyword: str, limit: int = 20) -> list[dict
 
                 link_el = item.ele("css:a", timeout=1)
                 href = link_el.attr("href") if link_el else ""
+                note_url = href if href.startswith("http") else f"https://www.xiaohongshu.com{href}" if href else ""
 
-                note_url = ""
-                if href:
-                    note_url = href if href.startswith("http") else f"https://www.xiaohongshu.com{href}"
-
-                # 点击获取详情
-                content, images = _get_detail_by_click(page, item)
+                content, images, collects, comments = _get_detail_by_click(page, item)
 
                 results.append({
                     "id": href.split("/")[-1] if href else "",
@@ -150,6 +213,8 @@ def search_xhs(page: "ChromiumPage", keyword: str, limit: int = 20) -> list[dict
                     "content": content or title,
                     "author": author,
                     "likes": _parse_count(likes_text),
+                    "collects": collects,
+                    "comments": comments,
                     "source_url": note_url,
                     "images": images,
                 })
@@ -163,49 +228,12 @@ def search_xhs(page: "ChromiumPage", keyword: str, limit: int = 20) -> list[dict
     return results
 
 
-def _get_detail_by_click(page: "ChromiumPage", item) -> tuple[str, list[str]]:
-    """点击笔记获取详情内容"""
-    content = ""
-    images = []
-    try:
-        item.click()
-        time.sleep(2)
-
-        desc_el = (
-            page.ele("css:.note-content .desc", timeout=3)
-            or page.ele("css:#detail-desc", timeout=2)
-            or page.ele("css:[class*='note-text']", timeout=2)
-        )
-        if desc_el:
-            content = desc_el.text
-
-        img_els = page.eles("css:.note-content img[src*='xhscdn']", timeout=2)
-        for img in img_els:
-            src = img.attr("src")
-            if src:
-                images.append(src)
-
-        close_btn = page.ele("css:[class*='close']", timeout=1)
-        if close_btn:
-            close_btn.click()
-        else:
-            page.actions.key_down("ESCAPE").key_up("ESCAPE")
-        time.sleep(0.5)
-
-    except Exception as e:
-        logger.debug(f"获取详情出错: {e}")
-        try:
-            page.actions.key_down("ESCAPE").key_up("ESCAPE")
-        except Exception:
-            pass
-        time.sleep(0.5)
-
-    return content, images
-
-
-async def save_strategies(park_id: str, items: list[dict]) -> int:
-    """将采集到的攻略保存到数据库，跳过已存在的"""
-    saved = 0
+async def save_strategies(park_id: str, items: list[dict]) -> list[dict]:
+    """
+    将采集到的攻略保存到数据库，跳过已存在的。
+    返回新入库的 item 列表（供后续 AI 提炼使用）。
+    """
+    new_items = []
     async with AsyncSessionLocal() as session:
         for item in items:
             source_url = item.get("source_url", "")
@@ -213,6 +241,7 @@ async def save_strategies(park_id: str, items: list[dict]) -> int:
                 continue
 
             strategy_id = hashlib.md5(source_url.encode()).hexdigest()
+            item["id"] = strategy_id  # 回写 id，供提炼时使用
 
             existing = await session.get(Strategy, strategy_id)
             if existing:
@@ -228,17 +257,50 @@ async def save_strategies(park_id: str, items: list[dict]) -> int:
                 content=content,
                 author=item.get("author", ""),
                 likes=item.get("likes", 0),
+                collects=item.get("collects", 0),
+                comments=item.get("comments", 0),
                 tags=[],
                 mentioned_attractions=_extract_mentioned_attractions(content, park_id),
+                image_urls=item.get("images", []),
             )
             session.add(strategy)
-            saved += 1
+            new_items.append(item)
 
         await session.commit()
-    return saved
+    return new_items
 
 
-async def collect(park_id: str = "hongkong_disney", limit_per_keyword: int = 20):
+async def apply_ai_summaries(new_items: list[dict]) -> None:
+    """对新入库的攻略批量调用 AI 提炼，将摘要写回数据库"""
+    from scripts.strategy_collector.distill import distill_batch
+
+    api_key = settings.anthropic_api_key
+    if not api_key:
+        logger.warning("未配置 ANTHROPIC_API_KEY，跳过 AI 提炼步骤")
+        return
+
+    logger.info(f"开始 AI 提炼，共 {len(new_items)} 条攻略…")
+    summaries = await distill_batch(new_items, api_key=api_key)
+
+    if not summaries:
+        logger.info("AI 提炼无结果")
+        return
+
+    async with AsyncSessionLocal() as session:
+        for strategy_id, summary in summaries.items():
+            strategy = await session.get(Strategy, strategy_id)
+            if strategy:
+                strategy.ai_summary = summary
+        await session.commit()
+
+    logger.info(f"AI 提炼完成，成功提炼 {len(summaries)} 条")
+
+
+async def collect(
+    park_id: str = "hongkong_disney",
+    limit_per_keyword: int = 20,
+    enable_distill: bool = True,
+):
     if not DRISSION_AVAILABLE:
         logger.error("DrissionPage 未安装，无法运行采集器")
         return
@@ -254,7 +316,7 @@ async def collect(park_id: str = "hongkong_disney", limit_per_keyword: int = 20)
     try:
         wait_for_login(page)
 
-        all_items = []
+        all_items: list[dict] = []
         seen_urls: set[str] = set()
 
         for keyword in keywords:
@@ -271,8 +333,11 @@ async def collect(park_id: str = "hongkong_disney", limit_per_keyword: int = 20)
 
         logger.info(f"共采集 {len(all_items)} 条去重后的攻略")
 
-        saved = await save_strategies(park_id, all_items)
-        logger.info(f"新入库 {saved} 条攻略（跳过已存在的）")
+        new_items = await save_strategies(park_id, all_items)
+        logger.info(f"新入库 {len(new_items)} 条攻略（跳过已存在的）")
+
+        if enable_distill and new_items:
+            await apply_ai_summaries(new_items)
 
     finally:
         page.quit()
@@ -285,6 +350,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="迪士尼攻略采集器")
     parser.add_argument("--park", default="hongkong_disney", choices=list(PARK_KEYWORDS.keys()))
     parser.add_argument("--limit", type=int, default=20, help="每个关键词采集数量")
+    parser.add_argument("--no-distill", action="store_true", help="跳过 AI 提炼步骤")
     args = parser.parse_args()
 
-    asyncio.run(collect(park_id=args.park, limit_per_keyword=args.limit))
+    asyncio.run(collect(
+        park_id=args.park,
+        limit_per_keyword=args.limit,
+        enable_distill=not args.no_distill,
+    ))

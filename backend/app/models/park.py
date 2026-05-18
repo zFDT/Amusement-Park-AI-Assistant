@@ -114,6 +114,8 @@ class Strategy(Base):
     comments = Column(Integer, default=0)
     tags = Column(JSON, default=list)  # 提取的标签/关键词
     mentioned_attractions = Column(JSON, default=list)  # 提到的项目名称
+    image_urls = Column(JSON, default=list)  # 图片 CDN URL 列表
+    ai_summary = Column(Text)  # AI 提炼的摘要（Claude 处理后）
     collected_at = Column(DateTime(timezone=True), default=_now)
     is_active = Column(Boolean, default=True)
 
