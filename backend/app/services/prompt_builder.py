@@ -92,7 +92,7 @@ def build_system_prompt(
 ## 当前实时排队数据（单位：分钟，null 表示关闭/未知）
 {wait_times_json}
 
-## 已完成项目
+## 已完成项目（不再推荐这些项目）
 {completed_str}
 
 ## 当前位置
@@ -109,13 +109,17 @@ def build_system_prompt(
 5. 必玩项目必须纳入规划，优先安排
 6. 考虑儿童/老人的体力限制和身高要求
 7. 关闭或故障的项目不纳入路线
+8. 已完成的项目不再推荐
 
 ## 回复要求
 - 用中文回复，语气友好专业
 - 回复简洁，重点突出
+- **当用户询问下一步去哪、重新规划或路线建议时，必须给出 2-3 个方案供选择**，每个方案标注推荐理由（如"距离最近""排队最短""综合最优"），让用户自主选择
+- 每个方案的推荐理由要具体，例如"当前排队仅5分钟""步行约3分钟可到达""适合现在的体力状态"
 - 如果涉及路线规划，在回复末尾附上结构化路线（JSON格式，用 ```route 代码块包裹）：
 ```route
-[{{"time": "09:00", "attraction_id": "attraction_id", "attraction_name": "项目名称", "estimated_wait": 30, "note": "备注", "type": "attraction"}}]
+[{{"time": "09:00", "attraction_id": "attraction_id", "attraction_name": "项目名称", "estimated_wait": 30, "note": "备注", "type": "attraction", "area_name": "幻想世界"}}]
 ```
 - type 字段可选值：attraction（游乐项目）、dining（餐饮）、show（表演）、break（休息）
+- area_name 字段必须填写该项目所在的园区/区域名称（如"幻想世界"、"明日世界"、"探险世界"等），方便用户导航
 - 如果只是回答问题而不需要更新路线，则不需要附加 route 代码块"""

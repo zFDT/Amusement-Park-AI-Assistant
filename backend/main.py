@@ -6,6 +6,7 @@ from app.core.config import settings
 from app.core.redis_client import close_redis
 from app.api.routes import chat, waittimes, parks, users
 from app.api.routes import strategies
+from app.api.routes import vision
 
 configure_logging()
 
@@ -24,6 +25,7 @@ app.include_router(waittimes.router, prefix="/api")
 app.include_router(parks.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
 app.include_router(strategies.router, prefix="/api")
+app.include_router(vision.router, prefix="/api")
 
 
 @app.on_event("shutdown")

@@ -43,6 +43,21 @@ class RouteItem(BaseModel):
     estimated_wait: int
     note: str | None = None
     type: Literal["attraction", "dining", "show", "break"] = "attraction"
+    area_name: str | None = None
+
+
+class VisionLocateRequest(BaseModel):
+    image_base64: str
+    image_type: str = "image/jpeg"
+    park_id: ParkId
+    ai_config: "AIConfig | None" = None
+
+
+class VisionLocateResponse(BaseModel):
+    area_name: str | None
+    attraction_name: str | None
+    label: str
+    confidence: str
 
 
 class AIConfig(BaseModel):
