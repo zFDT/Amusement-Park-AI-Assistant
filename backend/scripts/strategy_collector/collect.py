@@ -282,12 +282,17 @@ def search_xhs(page: "ChromiumPage", keyword: str, limit: int = 20) -> list[dict
     return results
 
 
-async def save_strategies(park_id: str, items: list[dict]) -> list[dict]:
+async def save_strategies(
+    park_id: str,
+    items: list[dict],
+    existing_strategy_ids: set[str] | None = None,
+) -> list[dict]:
     """
     将采集到的攻略保存到数据库，跳过已存在的。
     返回新入库的 item 列表（供后续 AI 提炼使用）。
     """
     new_items = []
+    known_ids = set(existing_strategy_ids or set())
     async with AsyncSessionLocal() as session:
         for item in items:
             source_url = item.get("source_url", "")
@@ -297,8 +302,7 @@ async def save_strategies(park_id: str, items: list[dict]) -> list[dict]:
             strategy_id = hashlib.md5(source_url.encode()).hexdigest()
             item["id"] = strategy_id
 
-            existing = await session.get(Strategy, strategy_id)
-            if existing:
+            if strategy_id in known_ids:
                 continue
 
             content = item.get("content", "")
@@ -319,9 +323,21 @@ async def save_strategies(park_id: str, items: list[dict]) -> list[dict]:
             )
             session.add(strategy)
             new_items.append(item)
+            known_ids.add(strategy_id)
 
         await session.commit()
     return new_items
+
+
+async def load_existing_strategy_ids(park_id: str, platform: str = "xhs") -> set[str]:
+    """加载指定乐园下已入库攻略的 ID，用于采集前去重。"""
+    from sqlalchemy import select
+
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(Strategy.id).where(Strategy.park_id == park_id, Strategy.platform == platform)
+        )
+        return set(result.scalars().all())
 
 
 async def apply_ai_summaries(new_items: list[dict]) -> None:
@@ -386,6 +402,9 @@ async def collect(
 
         all_items: list[dict] = []
         seen_urls: set[str] = set()
+        existing_strategy_ids = await load_existing_strategy_ids(park_id)
+        skipped_existing = 0
+        skipped_duplicate = 0
 
         for keyword in keywords:
             logger.info(f"搜索关键词：{keyword}")
@@ -393,15 +412,33 @@ async def collect(
 
             for item in items:
                 url = item.get("source_url", "")
-                if url and url not in seen_urls:
-                    seen_urls.add(url)
-                    all_items.append(item)
+                if not url:
+                    continue
+
+                if url in seen_urls:
+                    skipped_duplicate += 1
+                    continue
+
+                strategy_id = hashlib.md5(url.encode()).hexdigest()
+                item["id"] = strategy_id
+
+                if strategy_id in existing_strategy_ids:
+                    skipped_existing += 1
+                    continue
+
+                seen_urls.add(url)
+                all_items.append(item)
 
             time.sleep(2)
 
-        logger.info(f"共采集 {len(all_items)} 条去重后的攻略")
+        logger.info(
+            "共采集 %d 条去重后的攻略（本轮内重复 %d 条，数据库已存在 %d 条）",
+            len(all_items),
+            skipped_duplicate,
+            skipped_existing,
+        )
 
-        new_items = await save_strategies(park_id, all_items)
+        new_items = await save_strategies(park_id, all_items, existing_strategy_ids=existing_strategy_ids)
         logger.info(f"新入库 {len(new_items)} 条攻略（跳过已存在的）")
 
         if enable_distill and new_items:
