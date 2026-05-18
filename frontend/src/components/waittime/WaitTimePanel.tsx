@@ -1,4 +1,4 @@
-import { RefreshCw, Clock } from 'lucide-react'
+import { RefreshCw, Clock, AlertCircle, Loader2 } from 'lucide-react'
 import { useWaitTimes } from '@/hooks/useWaitTimes'
 import { Badge } from '@/components/ui/Badge'
 import type { WaitStatus } from '@/types'
@@ -20,7 +20,7 @@ function waitLabel(status: WaitStatus, minutes: number | null | undefined): stri
 }
 
 export function WaitTimePanel() {
-  const { waitTimes, lastWaitTimeUpdate, refresh } = useWaitTimes()
+  const { waitTimes, lastWaitTimeUpdate, loading, error, refresh } = useWaitTimes()
 
   const entries = Object.values(waitTimes)
 
@@ -41,17 +41,30 @@ export function WaitTimePanel() {
         </div>
         <button
           onClick={refresh}
-          className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
+          disabled={loading}
+          className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors disabled:opacity-40"
           aria-label="刷新排队时间"
         >
-          <RefreshCw className="w-4 h-4" />
+          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
         </button>
       </div>
 
+      {error && (
+        <div className="mx-4 mt-3 flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+          {error}
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto">
-        {entries.length === 0 ? (
-          <div className="flex items-center justify-center h-32 text-sm text-gray-400">
+        {loading && entries.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-32 gap-2 text-sm text-gray-400">
+            <Loader2 className="w-5 h-5 animate-spin" />
             加载中...
+          </div>
+        ) : entries.length === 0 ? (
+          <div className="flex items-center justify-center h-32 text-sm text-gray-400">
+            暂无排队数据
           </div>
         ) : (
           <div className="divide-y divide-gray-50">

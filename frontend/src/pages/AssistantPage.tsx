@@ -13,6 +13,7 @@ export function AssistantPage() {
   const { sessionId, parkId, planningInfo, messages, resetSession } = useAppStore()
   const [activeTab, setActiveTab] = useState<Tab>('chat')
   const [shareCode, setShareCode] = useState<string | null>(null)
+  const [shareError, setShareError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [sharing, setSharing] = useState(false)
 
@@ -32,11 +33,13 @@ export function AssistantPage() {
   const handleShare = async () => {
     if (!sessionId) return
     setSharing(true)
+    setShareError(null)
+    setShareCode(null)
     try {
       const res = await shareSession(sessionId)
       setShareCode(res.code)
     } catch {
-      // ignore
+      setShareError('生成恢复码失败，请重试')
     } finally {
       setSharing(false)
     }
@@ -89,6 +92,12 @@ export function AssistantPage() {
           </button>
         </div>
       </header>
+
+      {shareError && (
+        <div className="mx-4 mt-3 p-3 bg-red-50 border border-red-200 rounded-xl">
+          <p className="text-xs text-red-600 text-center">{shareError}</p>
+        </div>
+      )}
 
       {shareCode && (
         <div className="mx-4 mt-3 p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between gap-3">

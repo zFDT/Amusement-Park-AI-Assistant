@@ -134,6 +134,8 @@ export function MessageBubble({ message }: MessageBubbleProps) {
             'rounded-2xl px-4 py-3',
             isUser
               ? 'bg-blue-600 text-white rounded-tr-sm text-sm leading-relaxed whitespace-pre-wrap'
+              : message.isError
+              ? 'bg-red-50 text-red-700 border border-red-200 rounded-tl-sm text-sm leading-relaxed'
               : 'bg-gray-100 text-gray-800 rounded-tl-sm'
           )}
         >
@@ -144,6 +146,8 @@ export function MessageBubble({ message }: MessageBubbleProps) {
               <span className="animate-bounce [animation-delay:0.2s]">·</span>
             </span>
           ) : isUser ? (
+            message.content
+          ) : message.isError ? (
             message.content
           ) : (
             renderMarkdown(message.content)

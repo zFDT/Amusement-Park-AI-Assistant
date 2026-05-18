@@ -97,6 +97,7 @@ export interface Message {
   content: string
   route?: RouteItem[]
   createdAt: string
+  isError?: boolean
 }
 
 export interface SessionData {

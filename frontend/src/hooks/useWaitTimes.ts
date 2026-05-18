@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react'
+import { useEffect, useCallback, useState } from 'react'
 import { useAppStore } from '@/store/sessionStore'
 import { getWaitTimes } from '@/services/api'
 import type { WaitTimeData } from '@/types'
@@ -7,9 +7,13 @@ const REFRESH_INTERVAL_MS = 5 * 60 * 1000
 
 export function useWaitTimes() {
   const { parkId, setWaitTimes, waitTimes, lastWaitTimeUpdate } = useAppStore()
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
     if (!parkId) return
+    setLoading(true)
+    setError(null)
     try {
       const data = await getWaitTimes(parkId)
       const map: Record<string, WaitTimeData> = {}
@@ -18,7 +22,9 @@ export function useWaitTimes() {
       }
       setWaitTimes(map, data.lastUpdated)
     } catch {
-      // silently fail — stale data is better than crashing
+      setError('获取排队数据失败，显示上次缓存')
+    } finally {
+      setLoading(false)
     }
   }, [parkId, setWaitTimes])
 
@@ -29,5 +35,5 @@ export function useWaitTimes() {
     return () => clearInterval(timer)
   }, [parkId, refresh])
 
-  return { waitTimes, lastWaitTimeUpdate, refresh }
+  return { waitTimes, lastWaitTimeUpdate, loading, error, refresh }
 }

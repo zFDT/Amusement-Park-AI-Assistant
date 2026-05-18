@@ -14,6 +14,7 @@ export function useChat() {
     aiConfig,
     addMessage,
     updateLastMessage,
+    removeLastMessage,
     setStreaming,
     setCurrentRoute,
     isStreaming,
@@ -57,20 +58,31 @@ export function useChat() {
               latestRoute = chunk.route
               updateLastMessage(accumulated, latestRoute)
               setCurrentRoute(chunk.route)
+            } else if (chunk.type === 'error') {
+              updateLastMessage(chunk.message || '抱歉，AI 返回了错误，请重试。', undefined, true)
             }
           },
           abortRef.current.signal
         )
       } catch (err) {
-        if ((err as Error).name !== 'AbortError') {
-          updateLastMessage(accumulated || '抱歉，出现了一些问题，请重试。')
+        const error = err as Error
+        if (error.name === 'AbortError') {
+          // user stopped — remove empty placeholder, keep partial content if any
+          if (!accumulated) {
+            removeLastMessage()
+          }
+        } else {
+          const msg = error.message?.includes('fetch')
+            ? '网络连接失败，请检查网络后重试。'
+            : (error.message || '抱歉，出现了一些问题，请重试。')
+          updateLastMessage(accumulated || msg, undefined, !accumulated)
         }
       } finally {
         setStreaming(false)
         abortRef.current = null
       }
     },
-    [sessionId, isStreaming, currentLocation, aiConfig, addMessage, updateLastMessage, setStreaming, setCurrentRoute]
+    [sessionId, isStreaming, currentLocation, aiConfig, addMessage, updateLastMessage, removeLastMessage, setStreaming, setCurrentRoute]
   )
 
   const stopStreaming = useCallback(() => {

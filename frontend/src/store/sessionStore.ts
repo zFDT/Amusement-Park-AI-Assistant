@@ -29,7 +29,8 @@ interface AppState {
   resumeSession: (sessionId: string, parkId: ParkId, planningInfo: PlanningInfo, completedAttractions: string[], initialMessages?: Message[]) => void
   setAIConfig: (config: AIConfig | null) => void
   addMessage: (message: Message) => void
-  updateLastMessage: (content: string, route?: RouteItem[]) => void
+  updateLastMessage: (content: string, route?: RouteItem[], isError?: boolean) => void
+  removeLastMessage: () => void
   setStreaming: (streaming: boolean) => void
   setWaitTimes: (times: Record<string, WaitTimeData>, updatedAt: string) => void
   setCurrentRoute: (route: RouteItem[]) => void
@@ -68,12 +69,26 @@ export const useAppStore = create<AppState>()(
       addMessage: (message) =>
         set((state) => ({ messages: [...state.messages, message] })),
 
-      updateLastMessage: (content, route) =>
+      updateLastMessage: (content, route, isError) =>
         set((state) => {
           const messages = [...state.messages]
           const last = messages[messages.length - 1]
           if (last && last.role === 'assistant') {
-            messages[messages.length - 1] = { ...last, content, route: route ?? last.route }
+            messages[messages.length - 1] = {
+              ...last,
+              content,
+              route: route ?? last.route,
+              ...(isError !== undefined ? { isError } : {}),
+            }
+          }
+          return { messages }
+        }),
+
+      removeLastMessage: () =>
+        set((state) => {
+          const messages = [...state.messages]
+          if (messages.length > 0 && messages[messages.length - 1].role === 'assistant') {
+            messages.pop()
           }
           return { messages }
         }),
