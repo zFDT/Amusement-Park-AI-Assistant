@@ -3,14 +3,29 @@ import { Send, Square, Camera } from 'lucide-react'
 import { cn } from '@/components/ui/utils'
 import { useAppStore } from '@/store/sessionStore'
 import { visionLocate } from '@/services/api'
-import type { ParkId, AIConfig } from '@/types'
+import type { ParkId, AIConfig, Location } from '@/types'
 
-const QUICK_PROMPTS = [
-  '我现在在哪里，下一个去哪？',
-  '帮我重新规划剩余行程',
-  '附近有什么好吃的？',
-  '还有哪些项目排队短？',
-]
+/** Generate contextual quick prompts based on user's current state */
+function buildQuickPrompts(
+  currentLocation: Location | null,
+  completedAttractions: string[],
+): string[] {
+  const prompts: string[] = []
+  const locLabel = currentLocation?.label || currentLocation?.areaName
+
+  if (locLabel) {
+    prompts.push(`从${locLabel}出发，下一个去哪？`)
+    prompts.push(`${locLabel}附近有什么项目？`)
+  } else {
+    prompts.push('我现在在哪里，下一个去哪？')
+  }
+  if (completedAttractions.length > 0) {
+    prompts.push('帮我重新规划剩余行程')
+  }
+  prompts.push('还有哪些项目排队短？')
+  prompts.push('附近有什么好吃的？')
+  return prompts
+}
 
 interface ChatInputProps {
   onSend: (message: string) => void
@@ -18,6 +33,8 @@ interface ChatInputProps {
   isStreaming: boolean
   parkId?: ParkId | null
   aiConfig?: AIConfig | null
+  currentLocation?: Location | null
+  completedAttractions?: string[]
 }
 
 /** Compress an image file to base64, limiting width to maxWidth px */
@@ -50,7 +67,7 @@ function compressImage(file: File, maxWidth = 1024, quality = 0.7): Promise<{ ba
   })
 }
 
-export function ChatInput({ onSend, onStop, isStreaming, parkId, aiConfig }: ChatInputProps) {
+export function ChatInput({ onSend, onStop, isStreaming, parkId, aiConfig, currentLocation, completedAttractions }: ChatInputProps) {
   const [value, setValue] = useState('')
   const [locating, setLocating] = useState(false)
   const [locateError, setLocateError] = useState<string | null>(null)
@@ -115,7 +132,7 @@ export function ChatInput({ onSend, onStop, isStreaming, parkId, aiConfig }: Cha
   return (
     <div className="space-y-2">
       <div className="flex gap-2 flex-wrap">
-        {QUICK_PROMPTS.map((prompt) => (
+        {buildQuickPrompts(currentLocation ?? null, completedAttractions ?? []).map((prompt) => (
           <button
             key={prompt}
             onClick={() => onSend(prompt)}

@@ -14,6 +14,8 @@ export function ChatWindow({ messages }: ChatWindowProps) {
   const { sendMessage, stopStreaming, isStreaming } = useChat()
   const parkId = useAppStore((s) => s.parkId)
   const aiConfig = useAppStore((s) => s.aiConfig)
+  const currentLocation = useAppStore((s) => s.currentLocation)
+  const completedAttractions = useAppStore((s) => s.completedAttractions)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -43,6 +45,8 @@ export function ChatWindow({ messages }: ChatWindowProps) {
           isStreaming={isStreaming}
           parkId={parkId}
           aiConfig={aiConfig}
+          currentLocation={currentLocation}
+          completedAttractions={completedAttractions}
         />
       </div>
     </div>
