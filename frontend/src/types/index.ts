@@ -112,6 +112,7 @@ export interface SessionData {
 export interface Location {
   areaName?: string
   attractionId?: string
+  attractionName?: string
   lat?: number
   lng?: number
   label?: string

@@ -1,6 +1,9 @@
 import { useState, useRef, useCallback } from 'react'
-import { Send, Square } from 'lucide-react'
+import { Send, Square, Camera } from 'lucide-react'
 import { cn } from '@/components/ui/utils'
+import { useAppStore } from '@/store/sessionStore'
+import { visionLocate } from '@/services/api'
+import type { ParkId, AIConfig } from '@/types'
 
 const QUICK_PROMPTS = [
   '我现在在哪里，下一个去哪？',
@@ -13,17 +16,54 @@ interface ChatInputProps {
   onSend: (message: string) => void
   onStop: () => void
   isStreaming: boolean
+  parkId?: ParkId | null
+  aiConfig?: AIConfig | null
 }
 
-export function ChatInput({ onSend, onStop, isStreaming }: ChatInputProps) {
+/** Compress an image file to base64, limiting width to maxWidth px */
+function compressImage(file: File, maxWidth = 1024, quality = 0.7): Promise<{ base64: string; type: string }> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        let w = img.width
+        let h = img.height
+        if (w > maxWidth) {
+          h = Math.round((h * maxWidth) / w)
+          w = maxWidth
+        }
+        canvas.width = w
+        canvas.height = h
+        const ctx = canvas.getContext('2d')
+        if (!ctx) { reject(new Error('Canvas not supported')); return }
+        ctx.drawImage(img, 0, 0, w, h)
+        const base64 = canvas.toDataURL(file.type || 'image/jpeg', quality).split(',')[1]
+        resolve({ base64, type: file.type || 'image/jpeg' })
+      }
+      img.onerror = () => reject(new Error('Image load failed'))
+      img.src = reader.result as string
+    }
+    reader.onerror = () => reject(new Error('File read failed'))
+    reader.readAsDataURL(file)
+  })
+}
+
+export function ChatInput({ onSend, onStop, isStreaming, parkId, aiConfig }: ChatInputProps) {
   const [value, setValue] = useState('')
+  const [locating, setLocating] = useState(false)
+  const [locateError, setLocateError] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const setCurrentLocation = useAppStore((s) => s.setCurrentLocation)
 
   const handleSend = useCallback(() => {
     const trimmed = value.trim()
     if (!trimmed || isStreaming) return
     onSend(trimmed)
     setValue('')
+    setLocateError(null)
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
     }
@@ -43,6 +83,35 @@ export function ChatInput({ onSend, onStop, isStreaming }: ChatInputProps) {
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`
   }
 
+  const handleCameraClick = () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !parkId) return
+
+    setLocating(true)
+    setLocateError(null)
+    try {
+      const { base64, type } = await compressImage(file)
+      const result = await visionLocate(base64, type, parkId, aiConfig)
+      const label = result.attractionName || result.label
+      setCurrentLocation({
+        areaName: result.areaName ?? undefined,
+        attractionName: result.attractionName ?? undefined,
+        label,
+      })
+      setValue(`我现在在${label}附近，`)
+      // clear the input so the same file can be re-selected if needed
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    } catch (err) {
+      setLocateError((err as Error).message || '识别失败，请重试')
+    } finally {
+      setLocating(false)
+    }
+  }
+
   return (
     <div className="space-y-2">
       <div className="flex gap-2 flex-wrap">
@@ -57,7 +126,34 @@ export function ChatInput({ onSend, onStop, isStreaming }: ChatInputProps) {
           </button>
         ))}
       </div>
+      {locateError && (
+        <div className="text-xs text-red-500 px-1">{locateError}</div>
+      )}
       <div className="flex items-end gap-2">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={handleFileChange}
+          className="hidden"
+          aria-label="拍照识别位置"
+        />
+        <button
+          onClick={handleCameraClick}
+          disabled={isStreaming || locating || !parkId}
+          className={cn(
+            'flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-colors',
+            locating
+              ? 'bg-blue-100 text-blue-500 animate-pulse'
+              : 'bg-gray-100 text-gray-500 hover:bg-blue-50 hover:text-blue-600',
+            'disabled:opacity-40 disabled:cursor-not-allowed'
+          )}
+          aria-label="拍照识别位置"
+          title="拍照识别当前位置"
+        >
+          <Camera className="w-4 h-4" />
+        </button>
         <textarea
           ref={textareaRef}
           value={value}

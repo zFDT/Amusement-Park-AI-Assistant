@@ -3,6 +3,7 @@ import type { Message } from '@/types'
 import { MessageBubble } from './MessageBubble'
 import { ChatInput } from './ChatInput'
 import { useChat } from '@/hooks/useChat'
+import { useAppStore } from '@/store/sessionStore'
 
 interface ChatWindowProps {
   messages: Message[]
@@ -11,6 +12,8 @@ interface ChatWindowProps {
 export function ChatWindow({ messages }: ChatWindowProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const { sendMessage, stopStreaming, isStreaming } = useChat()
+  const parkId = useAppStore((s) => s.parkId)
+  const aiConfig = useAppStore((s) => s.aiConfig)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -38,6 +41,8 @@ export function ChatWindow({ messages }: ChatWindowProps) {
           onSend={sendMessage}
           onStop={stopStreaming}
           isStreaming={isStreaming}
+          parkId={parkId}
+          aiConfig={aiConfig}
         />
       </div>
     </div>

@@ -1,4 +1,4 @@
-import type { PlanningInfo, WaitTimesResponse, RouteItem, AIConfig, WaitStatus } from '@/types'
+import type { PlanningInfo, WaitTimesResponse, RouteItem, AIConfig, WaitStatus, ParkId } from '@/types'
 import { toServerAIConfig } from '@/services/aiConfig'
 
 const BASE_URL = '/api'
@@ -254,5 +254,41 @@ export function getStrategies(params?: {
       collectedAt: s.collected_at as string,
       mentionedAttractions: (s.mentioned_attractions ?? []) as string[],
     })),
+  }))
+}
+
+// ── Vision ────────────────────────────────────────────────────────────────────
+
+export interface VisionLocateResponse {
+  areaName: string | null
+  attractionName: string | null
+  label: string
+  confidence: string
+}
+
+export function visionLocate(
+  imageBase64: string,
+  imageType: string,
+  parkId: ParkId,
+  aiConfig?: AIConfig | null,
+): Promise<VisionLocateResponse> {
+  return request<{
+    area_name: string | null
+    attraction_name: string | null
+    label: string
+    confidence: string
+  }>('/vision/locate', {
+    method: 'POST',
+    body: JSON.stringify({
+      image_base64: imageBase64,
+      image_type: imageType,
+      park_id: parkId,
+      ai_config: toServerAIConfig(aiConfig),
+    }),
+  }).then((r) => ({
+    areaName: r.area_name,
+    attractionName: r.attraction_name,
+    label: r.label,
+    confidence: r.confidence,
   }))
 }
