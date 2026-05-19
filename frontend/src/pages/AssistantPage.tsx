@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { RotateCcw, Map, List, Share2, Copy, Check, ChevronLeft } from 'lucide-react'
+import { RotateCcw, Map, List, Share2, Copy, Check, ChevronLeft, MapPin } from 'lucide-react'
 import { useAppStore } from '@/store/sessionStore'
 import { ChatWindow } from '@/components/chat/ChatWindow'
 import { WaitTimePanel } from '@/components/waittime/WaitTimePanel'
@@ -10,7 +10,10 @@ type Tab = 'chat' | 'waittimes'
 
 export function AssistantPage() {
   const navigate = useNavigate()
-  const { sessionId, parkId, planningInfo, messages, resetSession } = useAppStore()
+  const {
+    sessionId, parkId, planningInfo, messages, resetSession,
+    currentLocation,
+  } = useAppStore()
   const [activeTab, setActiveTab] = useState<Tab>('chat')
   const [shareCode, setShareCode] = useState<string | null>(null)
   const [shareError, setShareError] = useState<string | null>(null)
@@ -71,6 +74,12 @@ export function AssistantPage() {
           <div className="min-w-0">
             <h1 className="text-sm font-semibold text-gray-900 truncate">游园助理</h1>
             <p className="text-xs text-gray-400 truncate">{parkName} · {planningInfo.visitDate}</p>
+            {currentLocation && (currentLocation.label || currentLocation.areaName) && (
+              <p className="text-xs text-blue-600 flex items-center gap-1 truncate mt-0.5">
+                <MapPin className="w-3 h-3 flex-shrink-0" />
+                {currentLocation.label || currentLocation.areaName}
+              </p>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-1 shrink-0">
