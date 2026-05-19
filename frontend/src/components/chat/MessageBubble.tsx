@@ -1,6 +1,7 @@
-import { Clock, MapPin, Star, UtensilsCrossed, Coffee, Zap } from 'lucide-react'
+import { Clock, MapPin, Star, UtensilsCrossed, Coffee, Zap, Circle, CheckCircle } from 'lucide-react'
 import type { Message, RouteItem } from '@/types'
 import { cn } from '@/components/ui/utils'
+import { useAppStore } from '@/store/sessionStore'
 
 interface MessageBubbleProps {
   message: Message
@@ -120,6 +121,15 @@ function renderMarkdown(text: string): React.ReactNode {
 
 export function MessageBubble({ message }: MessageBubbleProps) {
   const isUser = message.role === 'user'
+  const completedAttractions = useAppStore((s) => s.completedAttractions)
+  const markAttractionComplete = useAppStore((s) => s.markAttractionComplete)
+
+  const routeItems = message.route
+  const completedCount = routeItems
+    ? routeItems.filter((item) => completedAttractions.includes(item.attractionId)).length
+    : 0
+  const totalCount = routeItems?.length ?? 0
+  const progressPct = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0
 
   return (
     <div className={cn('flex', isUser ? 'justify-end' : 'justify-start')}>
@@ -158,19 +168,52 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
             <div className="px-3 py-2 bg-blue-50 border-b border-blue-100 flex items-center gap-2">
               <MapPin className="w-4 h-4 text-blue-600" />
-              <span className="text-xs font-semibold text-blue-700">推荐路线</span>
+              <span className="text-xs font-semibold text-blue-700 flex-1">推荐路线</span>
+              {totalCount > 0 && (
+                <span className="text-xs text-blue-500">
+                  {completedCount}/{totalCount} 已完成
+                </span>
+              )}
             </div>
+            {totalCount > 0 && (
+              <div className="h-1 bg-blue-100">
+                <div
+                  className="h-full bg-blue-500 transition-all duration-300"
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
+            )}
             <div className="divide-y divide-gray-50">
-              {message.route.map((item, i) => (
+              {message.route.map((item, i) => {
+                const completed = completedAttractions.includes(item.attractionId)
+                return (
                 <div
                   key={`${item.attractionId}-${i}`}
                   className={cn(
-                    'flex items-start gap-3 px-3 py-2.5',
-                    item.type === 'break' && 'bg-gray-50/60',
-                    item.type === 'show' && 'bg-purple-50/40',
-                    item.type === 'dining' && 'bg-amber-50/40',
+                    'flex items-start gap-3 px-3 py-2.5 transition-colors',
+                    completed && 'opacity-50',
+                    !completed && item.type === 'break' && 'bg-gray-50/60',
+                    !completed && item.type === 'show' && 'bg-purple-50/40',
+                    !completed && item.type === 'dining' && 'bg-amber-50/40',
                   )}
                 >
+                  <button
+                    onClick={() => markAttractionComplete(item.attractionId)}
+                    disabled={completed}
+                    className={cn(
+                      'flex-shrink-0 mt-0.5 transition-colors',
+                      completed
+                        ? 'text-green-500 cursor-default'
+                        : 'text-gray-300 hover:text-green-400 cursor-pointer'
+                    )}
+                    aria-label={completed ? '已完成' : '标记为已完成'}
+                    title={completed ? '已完成' : '点击标记为已完成'}
+                  >
+                    {completed
+                      ? <CheckCircle className="w-4 h-4" />
+                      : <Circle className="w-4 h-4" />
+                    }
+                  </button>
                   <div className="flex items-center gap-1 text-xs text-gray-400 w-12 flex-shrink-0 mt-0.5">
                     <Clock className="w-3 h-3" />
                     {item.time}
@@ -178,7 +221,10 @@ export function MessageBubble({ message }: MessageBubbleProps) {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
                       <RouteItemTypeIcon type={item.type} />
-                      <p className={cn('text-sm font-medium truncate', routeItemNameColor(item.type))}>
+                      <p className={cn(
+                        'text-sm font-medium truncate',
+                        completed ? 'text-gray-400 line-through' : routeItemNameColor(item.type)
+                      )}>
                         {item.attractionName}
                       </p>
                     </div>
@@ -196,7 +242,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
                     </span>
                   )}
                 </div>
-              ))}
+              )})}
             </div>
           </div>
         )}

@@ -9,6 +9,7 @@ import type {
   ParkId,
   AIConfig,
 } from '@/types'
+import { updateSession } from '@/services/api'
 
 interface AppState {
   userId: string | null
@@ -34,7 +35,7 @@ interface AppState {
   setStreaming: (streaming: boolean) => void
   setWaitTimes: (times: Record<string, WaitTimeData>, updatedAt: string) => void
   setCurrentRoute: (route: RouteItem[]) => void
-  markAttractionComplete: (attractionId: string) => void
+  markAttractionComplete: (attractionId: string) => Promise<void>
   setCurrentLocation: (location: Location | null) => void
   resetSession: () => void
   logout: () => void
@@ -100,10 +101,16 @@ export const useAppStore = create<AppState>()(
 
       setCurrentRoute: (currentRoute) => set({ currentRoute }),
 
-      markAttractionComplete: (attractionId) =>
+      markAttractionComplete: async (attractionId) => {
         set((state) => ({
           completedAttractions: [...state.completedAttractions, attractionId],
-        })),
+        }))
+        // Fire-and-forget API sync; failure is non-critical (local state already updated)
+        const { sessionId, completedAttractions } = useAppStore.getState()
+        if (sessionId) {
+          updateSession(sessionId, { completedAttractions }).catch(() => {})
+        }
+      },
 
       setCurrentLocation: (currentLocation) => set({ currentLocation }),
 
