@@ -182,6 +182,12 @@ export function MessageBubble({ message }: MessageBubbleProps) {
                         {item.attractionName}
                       </p>
                     </div>
+                    {item.areaName && (
+                      <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-0.5">
+                        <MapPin className="w-3 h-3" />
+                        {item.areaName}
+                      </p>
+                    )}
                     {item.note && <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{item.note}</p>}
                   </div>
                   {item.estimatedWait > 0 && (

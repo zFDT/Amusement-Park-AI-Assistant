@@ -87,6 +87,7 @@ export interface RouteItem {
   estimatedWait: number
   note?: string
   type: 'attraction' | 'dining' | 'show' | 'break'
+  areaName?: string
 }
 
 export type MessageRole = 'user' | 'assistant' | 'system'
