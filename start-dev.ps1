@@ -43,20 +43,20 @@ Write-Host "Backend  : http://127.0.0.1:$BackendPort"
 Write-Host "Frontend : http://127.0.0.1:$FrontendPort"
 Write-Host "========================================" -ForegroundColor Cyan
 
-# === Step 1: Docker ======================================================
-Write-Host "[1/4] Starting Docker containers..." -ForegroundColor Green
+# === Step 1: Docker (Redis only — DB is remote, Docker is optional) =====
+Write-Host "[1/4] Starting Docker (Redis)..." -ForegroundColor Green
 Set-Location $Root
 $dockerOk = $false
 try {
-  docker compose up -d 2>&1 | Out-Null
+  docker compose up -d redis 2>&1 | Out-Null
   if ($LASTEXITCODE -eq 0) {
-    Write-Host "  [OK] PostgreSQL + Redis started" -ForegroundColor Green
+    Write-Host "  [OK] Redis started" -ForegroundColor Green
     $dockerOk = $true
   } else {
-    Write-Host "  [WARN] Docker exit code: $LASTEXITCODE" -ForegroundColor Yellow
+    Write-Host "  [WARN] Docker exit code: $LASTEXITCODE (Redis may be unavailable)" -ForegroundColor Yellow
   }
 } catch {
-  Write-Host "  [WARN] Docker not available: $_" -ForegroundColor Yellow
+  Write-Host "  [WARN] Docker not running — Redis unavailable, sessions will not persist" -ForegroundColor Yellow
 }
 
 # === Step 2: Backend venv & deps =========================================
