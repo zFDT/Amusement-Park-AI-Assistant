@@ -4,25 +4,8 @@ import { ChevronLeft } from 'lucide-react'
 import { PlanningForm } from '@/components/planning/PlanningForm'
 import { AIConfigPanel } from '@/components/settings/AIConfigPanel'
 import { useAppStore } from '@/store/sessionStore'
+import { PARKS } from '@/constants/parks'
 import type { ParkId } from '@/types'
-
-const PARKS = [
-  {
-    id: 'hongkong_disney' as ParkId,
-    name: '香港迪士尼乐园',
-    emoji: '✨',
-    description: '亚洲经典迪士尼，独家项目众多',
-    color: 'from-pink-500 to-orange-500',
-  },
-  {
-    id: 'shanghai_disney' as ParkId,
-    name: '上海迪士尼乐园',
-    emoji: '🏰',
-    description: '中国大陆首座迪士尼乐园',
-    color: 'from-blue-500 to-purple-600',
-    disabled: true,
-  },
-]
 
 export function PlanPage() {
   const navigate = useNavigate()

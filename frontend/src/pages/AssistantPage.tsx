@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { RotateCcw, Map, List, Share2, Copy, Check, ChevronLeft, MapPin } from 'lucide-react'
+import { RotateCcw, Map, List, Share2, Copy, Check, ChevronLeft, MapPin, X } from 'lucide-react'
 import { useAppStore } from '@/store/sessionStore'
 import { ChatWindow } from '@/components/chat/ChatWindow'
 import { WaitTimePanel } from '@/components/waittime/WaitTimePanel'
@@ -12,13 +12,14 @@ export function AssistantPage() {
   const navigate = useNavigate()
   const {
     sessionId, parkId, planningInfo, messages, resetSession,
-    currentLocation,
+    currentLocation, completedAttractions,
   } = useAppStore()
   const [activeTab, setActiveTab] = useState<Tab>('chat')
   const [shareCode, setShareCode] = useState<string | null>(null)
   const [shareError, setShareError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [sharing, setSharing] = useState(false)
+  const [showResetConfirm, setShowResetConfirm] = useState(false)
 
   useEffect(() => {
     if (!sessionId || !parkId) {
@@ -27,10 +28,12 @@ export function AssistantPage() {
   }, [sessionId, parkId, navigate])
 
   const handleReset = () => {
-    if (confirm('确定要重新开始规划吗？当前对话记录将被清除。')) {
-      resetSession()
-      navigate('/plan')
-    }
+    setShowResetConfirm(true)
+  }
+
+  const confirmReset = () => {
+    resetSession()
+    navigate('/plan')
   }
 
   const handleShare = async () => {
@@ -102,9 +105,49 @@ export function AssistantPage() {
         </div>
       </header>
 
+      {/* Reset confirmation modal */}
+      {showResetConfirm && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6">
+            <div className="flex items-start justify-between mb-4">
+              <h3 className="text-base font-semibold text-gray-900">确认重新规划？</h3>
+              <button onClick={() => setShowResetConfirm(false)} className="p-1 rounded-lg hover:bg-gray-100">
+                <X className="w-4 h-4 text-gray-400" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-600 mb-2">当前对话记录和路线将被清除。</p>
+            {completedAttractions.length > 0 && (
+              <p className="text-xs text-amber-600 mb-4">
+                ⚠️ 你已完成 {completedAttractions.length} 个项目，重新规划将丢失完成记录。
+              </p>
+            )}
+            <div className="flex gap-3 mt-4">
+              <button
+                onClick={() => setShowResetConfirm(false)}
+                className="flex-1 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={confirmReset}
+                className="flex-1 py-2.5 text-sm font-medium text-white bg-red-500 rounded-xl hover:bg-red-600 transition-colors"
+              >
+                确认重新规划
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {shareError && (
         <div className="mx-4 mt-3 p-3 bg-red-50 border border-red-200 rounded-xl">
           <p className="text-xs text-red-600 text-center">{shareError}</p>
+          <button
+            onClick={handleShare}
+            className="block mx-auto mt-2 text-xs text-red-600 underline hover:text-red-800"
+          >
+            重试
+          </button>
         </div>
       )}
 

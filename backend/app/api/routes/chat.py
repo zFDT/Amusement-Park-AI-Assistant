@@ -1,4 +1,5 @@
 import json
+import logging
 import random
 import string
 import uuid
@@ -8,7 +9,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from app.core.config import settings
-from app.core.redis_client import get_redis
+from app.core.redis_client import get_redis, is_redis_available
 from app.core.database import get_db
 from app.schemas import (
     ChatRequest,
@@ -25,6 +26,7 @@ from app.services.waittime_service import fetch_wait_times, wait_times_to_json
 from app.services.strategy_service import get_strategy_snippets
 
 router = APIRouter()
+logger = logging.getLogger("app.chat")
 
 _SHARE_CODE_TTL = 7 * 24 * 3600  # 7 days
 
@@ -33,15 +35,26 @@ def _generate_share_code() -> str:
     return "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
 
 
+async def _check_redis_available() -> None:
+    """Raise 503 if Redis is not available (critical dependency for sessions)."""
+    if not is_redis_available():
+        raise HTTPException(
+            status_code=503,
+            detail="服务暂不可用：会话存储(Redis)未连接，请稍后重试或联系管理员",
+        )
+
+
 async def _get_session(session_id: str) -> dict:
+    await _check_redis_available()
     redis = await get_redis()
     raw = await redis.get(f"session:{session_id}")
     if not raw:
-        raise HTTPException(status_code=404, detail="Session not found or expired")
+        raise HTTPException(status_code=404, detail="会话未找到或已过期")
     return json.loads(raw)
 
 
 async def _save_session(session_id: str, data: dict) -> None:
+    await _check_redis_available()
     redis = await get_redis()
     await redis.setex(
         f"session:{session_id}",
@@ -51,12 +64,14 @@ async def _save_session(session_id: str, data: dict) -> None:
 
 
 async def _get_messages(session_id: str) -> list[dict]:
+    await _check_redis_available()
     redis = await get_redis()
     raw = await redis.get(f"messages:{session_id}")
     return json.loads(raw) if raw else []
 
 
 async def _save_messages(session_id: str, messages: list[dict]) -> None:
+    await _check_redis_available()
     redis = await get_redis()
     trimmed = messages[-20:]
     await redis.setex(
@@ -72,39 +87,48 @@ from app.models.park import ParkVisit
 @router.post("/sessions", response_model=CreateSessionResponse)
 async def create_session(request: CreateSessionRequest):
     session_id = str(uuid.uuid4())
+    redis_ok = is_redis_available()
 
     try:
         wait_times = await fetch_wait_times(request.park_id)
         wt_json = wait_times_to_json(wait_times)
-    except Exception:
+    except Exception as e:
+        logger.warning("排队数据获取失败: %s", e)
         wt_json = "{}"
 
     strategy_snippets: list[str] = []
     try:
         async for db in get_db():
             strategy_snippets = await get_strategy_snippets(db, request.park_id)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("攻略摘要获取失败: %s", e)
 
+    # Generate plan first — this is the expensive/critical part
     initial_plan, route = await generate_initial_plan(
         request, wt_json, strategy_snippets, ai_config=request.ai_config
     )
 
-    session_data = {
-        "session_id": session_id,
-        "planning": request.model_dump(),
-        "completed_attractions": [],
-        "current_location": None,
-        "user_id": request.user_id,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    await _save_session(session_id, session_data)
+    # Try to persist session to Redis (non-blocking — don't fail the response)
+    session_persisted = False
+    if redis_ok:
+        try:
+            session_data = {
+                "session_id": session_id,
+                "planning": request.model_dump(),
+                "completed_attractions": [],
+                "current_location": None,
+                "user_id": request.user_id,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            }
+            await _save_session(session_id, session_data)
 
-    initial_message = {
-        "role": "assistant",
-        "content": initial_plan,
-    }
-    await _save_messages(session_id, [initial_message])
+            initial_message = {"role": "assistant", "content": initial_plan}
+            await _save_messages(session_id, [initial_message])
+            session_persisted = True
+        except Exception:
+            logger.warning("会话 %s 持久化失败（Redis 异常），AI 规划结果仍返回给用户", session_id)
+    else:
+        logger.warning("Redis 不可用，会话 %s 不会持久化（AI 规划结果仍返回）", session_id)
 
     # Persist visit record to DB if user_id provided
     if request.user_id:
@@ -121,7 +145,7 @@ async def create_session(request: CreateSessionRequest):
                 db.add(visit)
                 await db.commit()
         except Exception:
-            pass  # DB write failure doesn't block the session
+            logger.warning("游园记录入库失败（DB 异常），不影响会话结果")
 
     return CreateSessionResponse(
         session_id=session_id,
@@ -220,23 +244,24 @@ async def chat_stream(request: ChatRequest):
                 raise HTTPException(status_code=403, detail="该游园记录已归档，无法继续对话")
     except HTTPException:
         raise
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("检查游园归档状态失败: %s", e)
 
     planning = PlanningInfo(**session["planning"])
 
     try:
         wait_times = await fetch_wait_times(planning.park_id)
         wt_json = wait_times_to_json(wait_times)
-    except Exception:
+    except Exception as e:
+        logger.warning("聊天流：排队数据获取失败: %s", e)
         wt_json = "{}"
 
     strategy_snippets: list[str] = []
     try:
         async for db in get_db():
             strategy_snippets = await get_strategy_snippets(db, planning.park_id)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("聊天流：攻略摘要获取失败: %s", e)
 
     messages.append({"role": "user", "content": request.message})
 

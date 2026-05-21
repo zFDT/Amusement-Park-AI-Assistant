@@ -54,6 +54,25 @@ export function PlanningForm({ parkId }: PlanningFormProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+
+    // --- Client-side validation ---
+    // 1. Party must have at least one member
+    if (form.adults + form.children + form.elderly === 0) {
+      setError('同行人数至少需要 1 人')
+      return
+    }
+    // 2. Entry time must be before exit time
+    if (form.entryTime >= form.exitTime) {
+      setError('入园时间必须早于离园时间')
+      return
+    }
+    // 3. Visit date must be today or future
+    if (form.visitDate < today) {
+      setError('游园日期不能是过去的日期')
+      return
+    }
+    // --- End validation ---
+
     setLoading(true)
 
     const party: PartyMember[] = [

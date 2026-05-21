@@ -1,29 +1,12 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Sparkles, LogIn } from 'lucide-react'
+import { Sparkles, LogIn, ChevronLeft } from 'lucide-react'
 import { PlanningForm } from '@/components/planning/PlanningForm'
 import { AIConfigPanel } from '@/components/settings/AIConfigPanel'
 import { resumeByCode } from '@/services/api'
 import { useAppStore } from '@/store/sessionStore'
+import { PARKS } from '@/constants/parks'
 import type { ParkId } from '@/types'
-
-const PARKS = [
-  {
-    id: 'hongkong_disney' as ParkId,
-    name: '香港迪士尼乐园',
-    emoji: '✨',
-    description: '亚洲经典迪士尼，独家项目众多',
-    color: 'from-pink-500 to-orange-500',
-  },
-  {
-    id: 'shanghai_disney' as ParkId,
-    name: '上海迪士尼乐园',
-    emoji: '🏰',
-    description: '中国大陆首座迪士尼乐园',
-    color: 'from-blue-500 to-purple-600',
-    disabled: true,
-  },
-]
 
 export function HomePage() {
   const navigate = useNavigate()
@@ -60,9 +43,10 @@ export function HomePage() {
         <div className="max-w-lg mx-auto px-4 py-8">
           <button
             onClick={() => setSelectedPark(null)}
-            className="text-sm text-gray-500 hover:text-gray-700 mb-6 flex items-center gap-1"
+            className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-6"
           >
-            ← 重新选择乐园
+            <ChevronLeft className="w-4 h-4" />
+            重新选择乐园
           </button>
           <div className="mb-6">
             <h1 className="text-xl font-bold text-gray-900">游前规划</h1>
@@ -120,7 +104,7 @@ export function HomePage() {
                 {park.disabled ? (
                   <span className="text-xs bg-gray-200 text-gray-500 px-2 py-1 rounded-full">即将上线</span>
                 ) : (
-                  <span className="text-gray-400">→</span>
+                  <ChevronLeft className="w-5 h-5 text-gray-400 rotate-180 shrink-0" />
                 )}
               </div>
             </button>

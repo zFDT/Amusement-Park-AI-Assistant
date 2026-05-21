@@ -2,17 +2,37 @@ import type { PlanningInfo, WaitTimesResponse, RouteItem, AIConfig, WaitStatus, 
 import { toServerAIConfig } from '@/services/aiConfig'
 
 const BASE_URL = '/api'
+const REQUEST_TIMEOUT_MS = 30_000 // 30s timeout for regular requests
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options,
-  })
-  if (!res.ok) {
-    const error = await res.json().catch(() => ({ detail: res.statusText }))
-    throw new Error(error.detail ?? 'Request failed')
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+
+  try {
+    const res = await fetch(`${BASE_URL}${path}`, {
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      ...options,
+    })
+    if (!res.ok) {
+      let detail = '请求失败'
+      try {
+        const error = await res.json()
+        detail = error.detail ?? error.message ?? `HTTP ${res.status}`
+      } catch {
+        detail = `服务器错误 (${res.status})`
+      }
+      throw new Error(detail)
+    }
+    return res.json()
+  } catch (err: unknown) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error('请求超时，请检查网络连接后重试')
+    }
+    throw err
+  } finally {
+    clearTimeout(timeoutId)
   }
-  return res.json()
 }
 
 function snakeToCamelPlanningInfo(raw: Record<string, unknown>): PlanningInfo {

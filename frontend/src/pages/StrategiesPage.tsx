@@ -23,12 +23,14 @@ export function StrategiesPage() {
   const [strategies, setStrategies] = useState<StrategySummary[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [selected, setSelected] = useState<StrategySummary | null>(null)
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
   const load = useCallback(async () => {
     setLoading(true)
+    setError(null)
     try {
       const res = await getStrategies({
         parkId: parkId || undefined,
@@ -38,8 +40,11 @@ export function StrategiesPage() {
       })
       setStrategies(res.strategies)
       setTotal(res.total)
-    } catch {
-      // ignore
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '加载攻略失败'
+      setError(message)
+      setStrategies([])
+      setTotal(0)
     } finally {
       setLoading(false)
     }
@@ -135,6 +140,17 @@ export function StrategiesPage() {
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <span className="w-6 h-6 border-2 border-blue-600/30 border-t-blue-600 rounded-full animate-spin" />
+          </div>
+        ) : error ? (
+          <div className="text-center py-16 text-red-400">
+            <div className="text-4xl mb-3">⚠️</div>
+            <p className="text-sm">{error}</p>
+            <button
+              onClick={load}
+              className="mt-3 px-4 py-2 bg-blue-600 text-white text-sm rounded-xl font-medium hover:bg-blue-700 transition-colors"
+            >
+              重试
+            </button>
           </div>
         ) : strategies.length === 0 ? (
           <div className="text-center py-16 text-gray-400">

@@ -31,24 +31,43 @@ export async function streamChat(
   onChunk: (chunk: SSEChunk) => void,
   signal?: AbortSignal
 ): Promise<void> {
-  const res = await fetch('/api/chat/stream', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      session_id: request.sessionId,
-      message: request.message,
-      current_location: request.currentLocation,
-      ai_config: toServerAIConfig(request.aiConfig),
-    }),
-    signal,
-  })
-
-  if (!res.ok) {
-    const error = await res.json().catch(() => ({ detail: res.statusText }))
-    throw new Error(error.detail ?? 'Chat request failed')
+  let res: Response
+  try {
+    res = await fetch('/api/chat/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id: request.sessionId,
+        message: request.message,
+        current_location: request.currentLocation,
+        ai_config: toServerAIConfig(request.aiConfig),
+      }),
+      signal,
+    })
+  } catch (err: unknown) {
+    if (err instanceof TypeError && err.message === 'Failed to fetch') {
+      throw new Error('网络连接失败，请检查网络后重试')
+    }
+    throw err
   }
 
-  const reader = res.body!.getReader()
+  if (!res.ok) {
+    let detail = `服务器错误 (${res.status})`
+    try {
+      const error = await res.json()
+      detail = error.detail ?? error.message ?? detail
+    } catch {
+      // Response body is not JSON, use status text
+      if (res.statusText) detail = res.statusText
+    }
+    throw new Error(detail)
+  }
+
+  if (!res.body) {
+    throw new Error('响应体为空，无法接收流式数据')
+  }
+
+  const reader = res.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
 

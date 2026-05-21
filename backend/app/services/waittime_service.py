@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
@@ -6,8 +7,10 @@ from pathlib import Path
 import httpx
 
 from app.core.config import settings
-from app.core.redis_client import get_redis
+from app.core.redis_client import get_redis, is_redis_available
 from app.schemas import WaitTimeItem, WaitTimesResponse
+
+logger = logging.getLogger(__name__)
 
 QUEUE_TIMES_PARK_IDS = {
     "shanghai_disney": 30,
@@ -44,31 +47,38 @@ def _load_ride_id_to_name(park_id: str) -> dict[str, str]:
             _collect(data)
 
         return result
-    except Exception:
+    except Exception as e:
+        logger.warning("加载 %s 项目名称映射失败: %s", park_id, e)
         return {}
 
 
 async def fetch_wait_times(park_id: str) -> WaitTimesResponse:
-    redis = await get_redis()
+    now_iso = datetime.now(timezone.utc).isoformat()
     cache_key = f"waittimes:{park_id}"
 
-    cached = await redis.get(cache_key)
-    if cached:
-        return WaitTimesResponse.model_validate_json(cached)
+    # Try Redis cache first (gracefully skip if Redis unavailable)
+    if is_redis_available():
+        try:
+            redis = await get_redis()
+            cached = await redis.get(cache_key)
+            if cached:
+                return WaitTimesResponse.model_validate_json(cached)
+        except Exception as e:
+            logger.warning("Redis 缓存读取失败 (%s): %s", park_id, e)
 
     qt_park_id = QUEUE_TIMES_PARK_IDS.get(park_id)
     if not qt_park_id:
         raise ValueError(f"Unknown park_id: {park_id}")
 
     url = f"{QUEUE_TIMES_BASE}/{qt_park_id}/queue_times.json"
-    now_iso = datetime.now(timezone.utc).isoformat()
 
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(url)
             resp.raise_for_status()
             data = resp.json()
-    except Exception:
+    except Exception as e:
+        logger.warning("queue-times.com API 请求失败 (%s): %s", park_id, e)
         return WaitTimesResponse(park_id=park_id, last_updated=now_iso, attractions=[])
 
     # queue-times.com returns either lands[].rides[] or a flat rides[] depending on park
@@ -102,7 +112,14 @@ async def fetch_wait_times(park_id: str) -> WaitTimesResponse:
         attractions=attractions,
     )
 
-    await redis.setex(cache_key, settings.waittime_cache_ttl_seconds, result.model_dump_json())
+    # Try to cache result (gracefully skip if Redis unavailable)
+    if is_redis_available():
+        try:
+            redis = await get_redis()
+            await redis.setex(cache_key, settings.waittime_cache_ttl_seconds, result.model_dump_json())
+        except Exception as e:
+            logger.warning("Redis 缓存写入失败 (%s): %s", park_id, e)
+
     return result
 
 
