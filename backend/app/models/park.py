@@ -5,6 +5,7 @@ from sqlalchemy import (
     Column, String, Integer, Float, Boolean, Text, DateTime,
     ForeignKey, JSON, UniqueConstraint, Index
 )
+from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 
@@ -117,7 +118,7 @@ class Strategy(Base):
     image_urls = Column(JSON, default=list)  # 图片 CDN URL 列表
     ai_summary = Column(Text)  # AI 提炼的摘要（降级文本）
     structured_summary = Column(JSON)  # AI 结构化提炼结果 {is_useful, mentioned_attractions, suggested_route, tips, summary, strategy_type, strategy_subtypes}
-    search_vector = Column(Text)  # PostgreSQL TSVECTOR 全文搜索（title + content 的加权 tsvector）
+    search_vector = Column(TSVECTOR)  # PostgreSQL TSVECTOR 全文搜索（title + content 的加权 tsvector）
     collected_at = Column(DateTime(timezone=True), default=_now)
     is_active = Column(Boolean, default=True)
 

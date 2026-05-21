@@ -181,8 +181,8 @@ _ATTRACTIONS = {
     ],
 }
 
-# 详情页之间的间隔，避免触发反爬
-_DETAIL_INTERVAL = 1.5
+# 详情页之间的间隔，避免触发反爬（太短容易触发风控）
+_DETAIL_INTERVAL = 2.5
 
 
 def create_browser() -> "ChromiumPage":
@@ -260,6 +260,54 @@ def _run_js(page: "ChromiumPage", js: str):
         return None
 
 
+def _detect_anticrawl(page: "ChromiumPage", feed_id: str) -> str | None:
+    """
+    检测当前页面是否被反爬/风控拦截。
+    返回拦截原因字符串；如果页面正常则返回 None。
+    """
+    try:
+        current_url = page.url or ""
+        # 被重定向到登录页
+        if "login" in current_url.lower() or "signin" in current_url.lower():
+            return "被重定向到登录页"
+        # 页面标题包含典型拦截提示
+        title = page.run_js("return document.title || ''")
+        if title:
+            title_lower = title.lower()
+            anti_patterns = [
+                "扫码", "登录查看", "not found", "抱歉", "不存在",
+                "captcha", "verify", "验证", "风控",
+            ]
+            for pat in anti_patterns:
+                if pat in title_lower:
+                    return f"页面标题含反爬关键词: '{pat}'"
+    except Exception:
+        pass
+
+    # 检查 __INITIAL_STATE__ 中是否有 noteDetailMap
+    try:
+        has_note_map = page.run_js(
+            "return !!(window.__INITIAL_STATE__?.note?.noteDetailMap)"
+        )
+        if not has_note_map:
+            return "noteDetailMap 缺失（笔记可能不存在/需App查看）"
+    except Exception:
+        return "__INITIAL_STATE__ 不可访问"
+
+    # 检查该 feed_id 对应的 note 是否存在
+    safe_id = feed_id.replace("'", "").replace('"', "")
+    try:
+        has_note = page.run_js(
+            f"return !!window.__INITIAL_STATE__?.note?.noteDetailMap?.['{safe_id}']?.note"
+        )
+        if not has_note:
+            return f"笔记 {feed_id[:12]}... 在 noteDetailMap 中缺失（被删除/仅App可见）"
+    except Exception:
+        return "noteDetailMap 条目访问失败"
+
+    return None
+
+
 def _get_detail(page: "ChromiumPage", feed_id: str, xsec_token: str) -> tuple[str, list[str], int, int]:
     """
     导航到笔记详情页，从 __INITIAL_STATE__.note.noteDetailMap 提取：
@@ -282,6 +330,12 @@ def _get_detail(page: "ChromiumPage", feed_id: str, xsec_token: str) -> tuple[st
         )
         page.get(detail_url)
         time.sleep(2)
+
+        # 反爬检测
+        anticrawl_reason = _detect_anticrawl(page, feed_id)
+        if anticrawl_reason:
+            logger.warning(f"⚠ 反爬/风控: {anticrawl_reason}")
+            return content, images, collects, comments
 
         if not _wait_initial_state(page):
             logger.warning(f"详情页 __INITIAL_STATE__ 未加载: {feed_id}")
@@ -398,9 +452,12 @@ async def save_strategies(
     """
     将采集到的攻略保存到数据库，跳过已存在的。
     返回新入库的 item 列表（供后续 AI 提炼使用）。
+
+    自动跳过空内容条目（反爬拦截/已删除笔记）。
     """
     new_items = []
     known_ids = set(existing_strategy_ids or set())
+    skipped_empty = 0
     async with AsyncSessionLocal() as session:
         for item in items:
             source_url = item.get("source_url", "")
@@ -414,12 +471,20 @@ async def save_strategies(
                 continue
 
             content = item.get("content", "")
+            title = item.get("title", "")
+
+            # 跳过空内容条目（反爬拦截/已删除笔记/仅App可见）
+            if not title and not content:
+                skipped_empty += 1
+                logger.debug(f"跳过空内容条目: {source_url}")
+                continue
+
             strategy = Strategy(
                 id=strategy_id,
                 park_id=park_id,
                 platform="xhs",
                 source_url=source_url,
-                title=item.get("title", ""),
+                title=title,
                 content=content,
                 author=item.get("author", ""),
                 likes=item.get("likes", 0),
@@ -434,6 +499,8 @@ async def save_strategies(
             known_ids.add(strategy_id)
 
         await session.commit()
+        if skipped_empty > 0:
+            logger.info(f"跳过 {skipped_empty} 条空内容条目（反爬拦截/已删除/需App查看）")
     return new_items
 
 
