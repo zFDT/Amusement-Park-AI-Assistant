@@ -1,6 +1,7 @@
 .env
 backend/.venv/
 backend/browser_data/
+backend/data/collect_backups/
 frontend/node_modules/
 frontend/dist/
 __pycache__/
