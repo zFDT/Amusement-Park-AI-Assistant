@@ -11,6 +11,14 @@ const PARK_NAMES: Record<string, string> = {
 
 const PAGE_SIZE = 20
 
+/** 将小红书 CDN 图片 URL 代理到后端，解决 403 问题 */
+function proxyImage(url: string): string {
+  if (url.includes('xhscdn.com') || url.includes('xiaohongshu.com')) {
+    return `/api/images/proxy?url=${encodeURIComponent(url)}`
+  }
+  return url
+}
+
 export function StrategiesPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -210,7 +218,7 @@ function StrategyCard({ strategy: s, onClick }: { strategy: StrategySummary; onC
         {/* Thumbnail */}
         {s.imageUrls.length > 0 ? (
           <img
-            src={s.imageUrls[0]}
+            src={proxyImage(s.imageUrls[0])}
             alt=""
             className="w-16 h-16 rounded-xl object-cover shrink-0 bg-gray-100"
             loading="lazy"
@@ -323,7 +331,7 @@ function StrategyDetail({ strategy: s, onClose }: { strategy: StrategySummary; o
             {s.imageUrls.map((url, i) => (
               <img
                 key={i}
-                src={url}
+                src={proxyImage(url)}
                 alt=""
                 className="h-40 w-auto rounded-xl object-cover shrink-0 bg-gray-100"
                 loading="lazy"
