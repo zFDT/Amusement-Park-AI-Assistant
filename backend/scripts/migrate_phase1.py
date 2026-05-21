@@ -101,11 +101,11 @@ async def create_tsvector_trigger():
 
         # 创建触发器
         try:
+            await conn.execute(text("DROP TRIGGER IF EXISTS trg_strategies_search_vector ON strategies"))
             await conn.execute(text("""
-                DROP TRIGGER IF EXISTS trg_strategies_search_vector ON strategies;
                 CREATE TRIGGER trg_strategies_search_vector
                 BEFORE INSERT OR UPDATE OF title, content ON strategies
-                FOR EACH ROW EXECUTE FUNCTION strategies_search_vector_update();
+                FOR EACH ROW EXECUTE FUNCTION strategies_search_vector_update()
             """))
             logger.info("✓ 已创建 search_vector 自动更新触发器")
         except Exception as e:

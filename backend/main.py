@@ -7,6 +7,7 @@ from app.core.logging import configure_logging
 from app.core.config import settings
 from app.core.redis_client import close_redis, get_redis
 from app.core.database import engine
+from app.api.routes import chat, waittimes, parks, users, strategies, vision, compare
 
 configure_logging()
 
@@ -62,7 +63,6 @@ app.include_router(parks.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
 app.include_router(strategies.router, prefix="/api")
 app.include_router(vision.router, prefix="/api")
-from app.api.routes import compare
 app.include_router(compare.router, prefix="/api")
 
 
