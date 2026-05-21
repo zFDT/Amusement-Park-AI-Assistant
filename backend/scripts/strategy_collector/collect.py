@@ -444,13 +444,28 @@ def search_xhs(page: "ChromiumPage", keyword: str, limit: int = 20) -> list[dict
     return results
 
 
+# 入库批次大小：每 N 条 commit 一次，避免单次失败全部回滚
+_SAVE_BATCH_SIZE = 20
+
+# 采集结果备份目录
+_BACKUP_DIR = Path(__file__).parent.parent.parent / "data" / "collect_backups"
+
+
+def _get_backup_path(park_id: str) -> Path:
+    """获取采集备份文件路径"""
+    _BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    return _BACKUP_DIR / f"backup_{park_id}.json"
+
+
 async def save_strategies(
     park_id: str,
     items: list[dict],
     existing_strategy_ids: set[str] | None = None,
+    batch_size: int = _SAVE_BATCH_SIZE,
 ) -> list[dict]:
     """
-    将采集到的攻略保存到数据库，跳过已存在的。
+    将采集到的攻略分批保存到数据库，跳过已存在的。
+    每 batch_size 条 commit 一次，避免全部失败回滚。
     返回新入库的 item 列表（供后续 AI 提炼使用）。
 
     自动跳过空内容条目（反爬拦截/已删除笔记）。
@@ -458,6 +473,8 @@ async def save_strategies(
     new_items = []
     known_ids = set(existing_strategy_ids or set())
     skipped_empty = 0
+    batch: list[dict] = []
+
     async with AsyncSessionLocal() as session:
         for item in items:
             source_url = item.get("source_url", "")
@@ -496,9 +513,20 @@ async def save_strategies(
             )
             session.add(strategy)
             new_items.append(item)
+            batch.append(item)
             known_ids.add(strategy_id)
 
-        await session.commit()
+            # 分批提交，避免全部丢失
+            if len(batch) >= batch_size:
+                await session.commit()
+                logger.debug(f"已提交批次 {len(batch)} 条（累计 {len(new_items)} 条）")
+                batch.clear()
+
+        # 提交剩余批次
+        if batch:
+            await session.commit()
+            logger.debug(f"已提交最后批次 {len(batch)} 条（累计 {len(new_items)} 条）")
+
         if skipped_empty > 0:
             logger.info(f"跳过 {skipped_empty} 条空内容条目（反爬拦截/已删除/需App查看）")
     return new_items
@@ -564,7 +592,67 @@ async def collect(
     offset: int = 0,
     max_total: int | None = None,
     keyword_scope: str = "extended",
+    resume: bool = False,
 ):
+    """采集主流程。
+
+    如果 resume=True，跳过浏览器采集阶段，直接从本地备份文件加载数据入库。
+    """
+    # ── resume 模式：从本地备份恢复 ──
+    if resume:
+        backup_path = _get_backup_path(park_id)
+        if not backup_path.exists():
+            logger.error(f"备份文件不存在: {backup_path}")
+            return
+
+        logger.info(f"从备份文件恢复: {backup_path}")
+        all_items = json.loads(backup_path.read_text(encoding="utf-8"))
+        logger.info(f"加载 {len(all_items)} 条备份数据")
+
+        existing_strategy_ids = await load_existing_strategy_ids(park_id)
+
+        # 过滤掉已入库的
+        pending = []
+        skipped = 0
+        for item in all_items:
+            sid = hashlib.md5(item.get("source_url", "").encode()).hexdigest()
+            if sid in existing_strategy_ids:
+                skipped += 1
+            else:
+                pending.append(item)
+
+        if skipped:
+            logger.info(f"跳过 {skipped} 条已入库的")
+
+        if not pending:
+            logger.info("所有备份数据已入库，删除备份文件")
+            backup_path.unlink()
+            return
+
+        logger.info(f"待入库 {len(pending)} 条")
+        new_items = await save_strategies(park_id, pending, existing_strategy_ids)
+
+        # 入库成功，删除备份；失败则保留供下次重试
+        if new_items:
+            logger.info(f"从备份恢复入库 {len(new_items)} 条")
+            # 重新读取备份，移除已入库的，保留未入库的
+            remaining = [i for i in all_items
+                         if hashlib.md5(i.get("source_url", "").encode()).hexdigest()
+                         not in existing_strategy_ids
+                         and hashlib.md5(i.get("source_url", "").encode()).hexdigest()
+                         not in {hashlib.md5(n.get("source_url", "").encode()).hexdigest() for n in new_items}]
+            if remaining:
+                backup_path.write_text(json.dumps(remaining, ensure_ascii=False, indent=2), encoding="utf-8")
+                logger.warning(f"仍有 {len(remaining)} 条未入库，备份已更新")
+            else:
+                backup_path.unlink()
+                logger.info("所有备份数据已入库，备份文件已删除")
+
+        if enable_distill and new_items:
+            await apply_ai_summaries(new_items, park_id=park_id)
+        return
+
+    # ── 正常采集模式 ──
     if not DRISSION_AVAILABLE:
         logger.error("DrissionPage 未安装，无法运行采集器")
         return
@@ -641,8 +729,31 @@ async def collect(
             skipped_max_total,
         )
 
+        # ═══ 先落本地备份，再入库 ═══
+        backup_path = _get_backup_path(park_id)
+        backup_path.write_text(
+            json.dumps(all_items, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        logger.info(f"采集结果已保存到本地备份: {backup_path}")
+
         new_items = await save_strategies(park_id, all_items, existing_strategy_ids=existing_strategy_ids)
-        logger.info(f"新入库 {len(new_items)} 条攻略（跳过已存在的）")
+        logger.info(f"新入库 {len(new_items)} 条攻略")
+
+        # 入库成功，清理本地备份
+        if new_items:
+            # 检查是否还有未入库的（如空内容被跳过的）
+            saved_ids = {hashlib.md5(item.get("source_url", "").encode()).hexdigest() for item in new_items}
+            all_ids = {hashlib.md5(item.get("source_url", "").encode()).hexdigest() for item in all_items}
+            unsaved_ids = all_ids - saved_ids
+            if unsaved_ids:
+                remaining = [i for i in all_items
+                             if hashlib.md5(i.get("source_url", "").encode()).hexdigest() in unsaved_ids]
+                backup_path.write_text(json.dumps(remaining, ensure_ascii=False, indent=2), encoding="utf-8")
+                logger.info(f"备份已更新：{len(remaining)} 条未入库（空内容/反爬），可用 --resume 重试")
+            else:
+                backup_path.unlink()
+                logger.info("所有条目已入库，备份文件已删除")
 
         if enable_distill and new_items:
             await apply_ai_summaries(new_items, park_id=park_id)
@@ -666,6 +777,8 @@ if __name__ == "__main__":
     parser.add_argument("--login-only", action="store_true", help="仅执行登录，不开始采集")
     parser.add_argument("--keyword-scope", default="extended", choices=["basic", "extended", "full"],
                        help="关键词范围：basic(基础4-5个) / extended(基础+场景~15个) / full(全部~30个)")
+    parser.add_argument("--resume", action="store_true",
+                       help="从本地备份文件恢复入库（跳过浏览器采集，仅执行 DB 写入+提炼）")
     args = parser.parse_args()
 
     asyncio.run(collect(
@@ -677,4 +790,5 @@ if __name__ == "__main__":
         offset=args.offset,
         max_total=args.max_total,
         keyword_scope=args.keyword_scope,
+        resume=args.resume,
     ))
