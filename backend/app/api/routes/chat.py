@@ -99,7 +99,10 @@ async def create_session(request: CreateSessionRequest):
     strategy_snippets: list[str] = []
     try:
         async for db in get_db():
-            strategy_snippets = await get_strategy_snippets(db, request.park_id)
+            strategy_snippets = await get_strategy_snippets(
+                db, request.park_id,
+                preferences=request.preferences if hasattr(request, 'preferences') else None,
+            )
     except Exception as e:
         logger.warning("攻略摘要获取失败: %s", e)
 
@@ -259,11 +262,28 @@ async def chat_stream(request: ChatRequest):
     strategy_snippets: list[str] = []
     try:
         async for db in get_db():
-            strategy_snippets = await get_strategy_snippets(db, planning.park_id)
+            strategy_snippets = await get_strategy_snippets(
+                db, planning.park_id,
+                preferences=planning.preferences,
+            )
     except Exception as e:
         logger.warning("聊天流：攻略摘要获取失败: %s", e)
 
     messages.append({"role": "user", "content": request.message})
+
+    # 智能重规划：检测完成进度变化，必要时增强用户消息
+    completed_attractions = session.get("completed_attractions", [])
+    prev_completed = session.get("_prev_completed_count", 0)
+    if len(completed_attractions) > prev_completed and len(completed_attractions) > 0:
+        session["_prev_completed_count"] = len(completed_attractions)
+        await _save_session(request.session_id, session)
+        # 在用户消息中追加进度感知提示（不改变用户原始意图）
+        progress_hint = (
+            f"\n\n[系统提示] 用户已完成 {len(completed_attractions)} 个项目（"
+            + "、".join(completed_attractions[-3:])
+            + "），当前时间已推进。如果用户的行程需要调整，请主动建议重新规划后续路线。"
+        )
+        messages[-1]["content"] += progress_hint
 
     async def event_stream():
         accumulated = ""
@@ -272,7 +292,7 @@ async def chat_stream(request: ChatRequest):
             planning=planning,
             messages=messages,
             wait_times_json=wt_json,
-            completed_attractions=session.get("completed_attractions", []),
+            completed_attractions=completed_attractions,
             current_location=request.current_location,
             strategy_snippets=strategy_snippets,
             ai_config=request.ai_config,

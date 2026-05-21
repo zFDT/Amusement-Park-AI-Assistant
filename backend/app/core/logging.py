@@ -3,11 +3,17 @@
 同时输出到控制台和本地文件：
 - backend/logs/app.log：通用应用日志
 - backend/logs/ai.log：AI 交互与提炼相关日志
+
+日志格式：
+- 默认：文本格式（asctime level [name] message）
+- LOG_FORMAT=json 时：结构化 JSON 格式（含 timestamp/level/logger/message）
 """
 
 from __future__ import annotations
 
+import json
 import logging
+import os
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -15,7 +21,28 @@ from pathlib import Path
 _CONFIGURED = False
 
 
+class JsonFormatter(logging.Formatter):
+    """结构化 JSON 日志格式器，便于 ELK/Loki 等日志系统聚合查询。"""
+
+    def format(self, record: logging.LogRecord) -> str:
+        log_entry = {
+            "timestamp": self.formatTime(record, self.datefmt),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        if record.exc_info and record.exc_info[0]:
+            log_entry["exception"] = self.formatException(record.exc_info)
+        return json.dumps(log_entry, ensure_ascii=False, default=str)
+
+
+def _use_json_format() -> bool:
+    return os.getenv("LOG_FORMAT", "").lower() == "json"
+
+
 def _build_formatter() -> logging.Formatter:
+    if _use_json_format():
+        return JsonFormatter()
     return logging.Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s")
 
 

@@ -40,12 +40,16 @@ uvicorn main:app --reload --port 8001
 # 采集小红书攻略（需要 Chrome + DrissionPage）
 python -m scripts.strategy_collector.collect --park hongkong_disney --limit 20
 python -m scripts.strategy_collector.collect --park hongkong_disney --no-distill  # 跳过 AI 提炼
+python -m scripts.strategy_collector.collect --park hongkong_disney --keyword-scope full  # 扩展关键词（basic/extended/full）
 
 # 对已入库攻略补充 AI 提炼摘要（首次迁移后执行）
 python -m scripts.strategy_collector.redist --park hongkong_disney
 
 # 强制重新提炼所有攻略（覆盖已有摘要）
 python -m scripts.strategy_collector.redist --park hongkong_disney --force
+
+# Phase 1 数据库迁移（全文搜索 + 复合索引 + 触发器）
+python -m scripts.migrate_phase1
 
 # 已有数据库迁移（新增 image_urls / ai_summary / structured_summary 字段）
 python -m scripts.migrate_strategy_fields
@@ -95,15 +99,19 @@ yarn build        # TypeScript 编译 + Vite 构建
 **数据库模型**（`models/park.py`）：
 - `Park` / `Attraction` / `Strategy` 三张表，用 SQLAlchemy async。
 - `Attraction.queue_times_ride_id` 是与 queue-times.com 数据关联的外键。
-- `Strategy` 额外字段：`image_urls`（JSON，图片 CDN URL 列表）、`ai_summary`（Text，纯文本摘要，降级显示用）、`structured_summary`（JSON，AI 结构化提炼结果，含 `is_useful`/`mentioned_attractions`/`suggested_route`/`tips`/`summary`）。
+- `Strategy` 额外字段：`image_urls`（JSON，图片 CDN URL 列表）、`ai_summary`（Text，纯文本摘要，降级显示用）、`structured_summary`（JSON，AI 结构化提炼结果，含 `is_useful`/`strategy_type`/`strategy_subtypes`/`mentioned_attractions`/`suggested_route`/`tips`/`summary`）、`search_vector`（TSVECTOR，PostgreSQL 全文搜索）。
 - Session 和消息历史**不入库**，只存 Redis。
 
 **攻略采集与提炼**（`scripts/strategy_collector/`）：
 
-- `collect.py`：DrissionPage 驱动 Chrome，从 `window.__INITIAL_STATE__` 提取搜索结果和详情（参考 xiaohongshu-mcp 方案，比 DOM 选择器更稳定）。采集完成后自动调用 AI 提炼。
-- `distill.py`：调用视觉模型（支持 anthropic/openai/gemini/deepseek），分析笔记正文 + 图片（最多4张，deepseek 仅文本），输出结构化 JSON（`is_useful`、`mentioned_attractions`、`suggested_route`、`tips`、`summary`），同时写入 `ai_summary`（纯文本）和 `structured_summary`（JSON）两个字段。使用 httpx 直接调用，不依赖 anthropic SDK。
+- `collect.py`：DrissionPage 驱动 Chrome，从 `window.__INITIAL_STATE__` 提取搜索结果和详情（参考 xiaohongshu-mcp 方案，比 DOM 选择器更稳定）。关键词支持 `--keyword-scope basic/extended/full` 三级动态生成（基础→场景→项目关键词）。采集完成后自动调用 AI 提炼。
+- `distill.py`：调用视觉模型（支持 anthropic/openai/gemini/deepseek），分析笔记正文 + 图片（最多4张，deepseek 仅文本）。v2 升级：乐园差异化 System Prompt（含项目白名单 + 园区分布 + 乐园特色），输出新增 `strategy_type`（9 类）和 `strategy_subtypes`（14 个场景标签），后处理校验项目名白名单 + 别名模糊匹配。使用 httpx 直接调用，不依赖 anthropic SDK。
 - `redist.py`：对已入库但缺少摘要的攻略批量补充提炼；`--force` 参数可强制重新提炼所有攻略。
-- `strategy_service.py`：注入 System Prompt 时优先使用 `structured_summary`（跳过 `is_useful=False` 的攻略，格式化路线和技巧），降级到 `ai_summary`，再降级到原始正文截取。
+- `strategy_service.py`：v2 多路召回系统（热门 / 类型多样 / 偏好匹配 / 时效性）→ 去重 + 多样性保障 → 格式化输出。注入 System Prompt 时优先使用 `structured_summary`（跳过 `is_useful=False` 的攻略），降级到 `ai_summary`，再降级到原始正文截取。
+
+**其他 API 路由**：
+- `routes/strategies.py`：攻略列表 API，v2 新增 `strategy_type` 和 `mentioned_attraction` 筛选参数。
+- `routes/compare.py`：双园对比 API（`GET /api/compare`），返回香港/上海迪士尼的项目数、排队、攻略数对比及推荐。
 
 **乐园静态数据**（`app/data/*.json`）：
 - `hongkong_disney.json` 和 `shanghai_disney.json` 是项目数据的权威来源，`init_db.py` 读取这两个文件导入数据库。
@@ -150,6 +158,12 @@ yarn build        # TypeScript 编译 + Vite 构建
 - `backend/logs/access.log`：前后端 HTTP 交互请求记录（路径、状态码、耗时），5MB 轮转，保留 5 份
 
 日志配置在 `backend/app/core/logging.py`，由 `main.py` 启动时调用 `configure_logging()` 初始化。
+
+支持 `LOG_FORMAT=json` 环境变量切换为结构化 JSON 日志，便于 ELK/Loki 聚合查询。
+
+## Redis 持久化
+
+`docker-compose.yml` 中 Redis 已启用 AOF（`appendonly yes`）+ RDB 混合持久化，maxmemory 256MB + allkeys-lru 淘汰策略，数据卷 `redis_data` 持久化到宿主机。
 
 ## 数据库同步（多机开发）
 

@@ -139,6 +139,7 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'youyuan-session',
+      version: 2,
       partialize: (state) => ({
         userId: state.userId,
         sessionId: state.sessionId,

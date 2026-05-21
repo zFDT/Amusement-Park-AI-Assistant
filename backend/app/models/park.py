@@ -116,7 +116,8 @@ class Strategy(Base):
     mentioned_attractions = Column(JSON, default=list)  # 提到的项目名称
     image_urls = Column(JSON, default=list)  # 图片 CDN URL 列表
     ai_summary = Column(Text)  # AI 提炼的摘要（降级文本）
-    structured_summary = Column(JSON)  # AI 结构化提炼结果 {is_useful, mentioned_attractions, suggested_route, tips, summary}
+    structured_summary = Column(JSON)  # AI 结构化提炼结果 {is_useful, mentioned_attractions, suggested_route, tips, summary, strategy_type, strategy_subtypes}
+    search_vector = Column(Text)  # PostgreSQL TSVECTOR 全文搜索（title + content 的加权 tsvector）
     collected_at = Column(DateTime(timezone=True), default=_now)
     is_active = Column(Boolean, default=True)
 
@@ -125,4 +126,6 @@ class Strategy(Base):
     __table_args__ = (
         Index("ix_strategies_park_platform", "park_id", "platform"),
         Index("ix_strategies_likes", "likes"),
+        Index("ix_strategies_park_active_likes", "park_id", "is_active", "likes"),
+        Index("ix_strategies_park_active_date", "park_id", "is_active", "collected_at"),
     )

@@ -60,9 +60,13 @@ def build_system_prompt(
     location_str = json.dumps(current_location, ensure_ascii=False) if current_location else "未知"
 
     if strategy_snippets:
-        strategy_section = "\n".join(f"- {s}" for s in strategy_snippets[:5])
+        strategy_items = "\n".join(f"  {i+1}. {s}" for i, s in enumerate(strategy_snippets[:5]))
+        strategy_section = f"""共 {len(strategy_snippets[:5])} 条相关攻略：
+{strategy_items}
+
+> 以上攻略按类型和相关性排序。在回复中，如果攻略中的建议适用于用户当前情况，可以直接引用（如"根据其他游客的经验..."），增强建议的可信度。"""
     else:
-        strategy_section = "暂无攻略数据"
+        strategy_section = "暂无相关攻略数据"
 
     # Calculate remaining hours
     try:
@@ -110,6 +114,8 @@ def build_system_prompt(
 6. 考虑儿童/老人的体力限制和身高要求
 7. 关闭或故障的项目不纳入路线
 8. 已完成的项目不再推荐
+9. {"香港迪士尼面积小（步行10分钟可跨园区），可灵活跨区安排" if planning.park_id == "hongkong_disney" else "上海迪士尼面积大（跨园区需20-30分钟），建议按区域集中安排，减少来回奔波"}
+10. 如果攻略中有与用户情况匹配的实用建议，请引用并标注来源（如"根据攻略《xxx》的建议..."）
 
 ## 回复要求
 - 用中文回复，语气友好专业

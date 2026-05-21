@@ -16,7 +16,18 @@ services:
     image: redis:7-alpine
     ports:
       - "6379:6379"
-    command: redis-server --save 60 1
+    command: >
+      redis-server
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
 
 volumes:
   postgres_data:
+  redis_data:

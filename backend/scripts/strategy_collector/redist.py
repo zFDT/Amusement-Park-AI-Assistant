@@ -62,6 +62,7 @@ async def redist(park_id: str = "hongkong_disney", force: bool = False):
         base_url=ai_config.get("base_url") or None,
         api_mode=ai_config.get("api_mode", "anthropic"),
         model=ai_config.get("model", ""),
+        park_id=park_id if park_id != "all" else "",
     )
 
     async with AsyncSessionLocal() as session:

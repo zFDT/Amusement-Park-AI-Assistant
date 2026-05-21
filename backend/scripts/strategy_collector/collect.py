@@ -45,7 +45,10 @@ except ImportError:
 BROWSER_DATA_DIR = Path(__file__).parent.parent.parent / "browser_data" / "xhs"
 XHS_PORT = 9521
 
-PARK_KEYWORDS = {
+# ── 关键词动态生成 ────────────────────────────────────────────────────────────
+
+# 基础关键词（每个乐园必备）
+_BASE_KEYWORDS = {
     "hongkong_disney": [
         "香港迪士尼攻略",
         "香港迪士尼游玩路线",
@@ -60,6 +63,110 @@ PARK_KEYWORDS = {
         "上海迪士尼一日游",
     ],
 }
+
+# 场景关键词模板（按 strategy_subtype 映射到搜索词）
+_SCENE_KEYWORD_TEMPLATES = {
+    "rainy_day": ["{park_short}迪士尼雨天攻略", "{park_short}迪士尼下雨怎么玩"],
+    "summer_heat": ["{park_short}迪士尼夏天攻略", "{park_short}迪士尼暑期攻略"],
+    "christmas": ["{park_short}迪士尼圣诞攻略", "{park_short}迪士尼圣诞节"],
+    "halloween": ["{park_short}迪士尼万圣节攻略", "{park_short}迪士尼万圣"],
+    "with_toddler": ["{park_short}迪士尼带娃攻略", "{park_short}迪士尼亲子攻略", "{park_short}迪士尼儿童"],
+    "with_elderly": ["{park_short}迪士尼老人攻略", "{park_short}迪士尼长辈"],
+    "with_friends": ["{park_short}迪士尼情侣攻略", "{park_short}迪士尼闺蜜"],
+    "solo": ["{park_short}迪士尼一个人攻略"],
+    "first_time": ["{park_short}迪士尼新手攻略", "{park_short}迪士尼首次"],
+    "money_saving": ["{park_short}迪士尼省钱攻略", "{park_short}迪士尼性价比"],
+    "morning_rush": ["{park_short}迪士尼早鸟攻略", "{park_short}迪士尼开园冲刺"],
+    "evening_route": ["{park_short}迪士尼夜场攻略", "{park_short}迪士尼晚上"],
+}
+
+# 迪士尼乐园简称映射
+_PARK_SHORT_NAMES = {
+    "hongkong_disney": "香港",
+    "shanghai_disney": "上海",
+}
+
+# 热门项目关键词模板
+_ATTRACTION_KEYWORD_TEMPLATE = "{park_short}迪士尼 {attraction_name}"
+
+# 每种范围允许的最大关键词数
+_KEYWORD_SCOPE_LIMITS = {
+    "basic": 6,
+    "extended": 15,
+    "full": 30,
+}
+
+
+def _generate_search_keywords(park_id: str, scope: str = "extended") -> list[str]:
+    """
+    动态生成搜索关键词列表。
+
+    scope:
+    - basic: 仅基础关键词（4-5 个）
+    - extended: 基础 + 场景关键词（~15 个）
+    - full: 基础 + 场景 + 热门项目关键词（~30 个）
+    """
+    base = _BASE_KEYWORDS.get(park_id, [])
+    if scope == "basic":
+        return base
+
+    park_short = _PARK_SHORT_NAMES.get(park_id, park_id)
+    keywords = list(base)
+
+    # 添加场景关键词
+    for _subtype, templates in _SCENE_KEYWORD_TEMPLATES.items():
+        for template in templates:
+            kw = template.format(park_short=park_short)
+            keywords.append(kw)
+
+    # 添加热门项目关键词（仅 full 模式）
+    if scope == "full":
+        names, _ = _get_attraction_names_for_search(park_id)
+        # 取前 10 个热门项目
+        for name in names[:10]:
+            kw = _ATTRACTION_KEYWORD_TEMPLATE.format(park_short=park_short, attraction_name=name)
+            keywords.append(kw)
+
+    limit = _KEYWORD_SCOPE_LIMITS.get(scope, 15)
+    # 去重并限制数量
+    seen = set()
+    deduped = []
+    for kw in keywords:
+        if kw not in seen:
+            seen.add(kw)
+            deduped.append(kw)
+        if len(deduped) >= limit:
+            break
+
+    return deduped
+
+
+def _get_attraction_names_for_search(park_id: str) -> tuple[list[str], dict]:
+    """从乐园 JSON 加载热门项目名称（优先取 category != show 的项目）。"""
+    try:
+        data_path = Path(__file__).parent.parent.parent / "app" / "data" / f"{park_id}.json"
+        if not data_path.exists():
+            return [], {}
+        data = json.loads(data_path.read_text(encoding="utf-8"))
+        names = []
+        name_to_area = {}
+        for area in data.get("areas", []):
+            for attr in area.get("attractions", []):
+                name = attr.get("name", "")
+                if name:
+                    names.append(name)
+                    name_to_area[name] = area.get("name", "")
+        # 优先排列非 show 类项目
+        thrill_names = [n for n in names if any(
+            a.get("name") == n and a.get("category") not in ("show", "dining", "shopping")
+            for area in data.get("areas", []) for a in area.get("attractions", [])
+        )]
+        return thrill_names or names, name_to_area
+    except Exception:
+        return [], {}
+
+# 兼容旧版常量访问（内部转为函数调用）
+PARK_KEYWORDS = {pid: _generate_search_keywords(pid, "basic") for pid in _BASE_KEYWORDS}
 
 _ATTRACTIONS = {
     "hongkong_disney": [
@@ -341,7 +448,7 @@ async def load_existing_strategy_ids(park_id: str, platform: str = "xhs") -> set
         return set(result.scalars().all())
 
 
-async def apply_ai_summaries(new_items: list[dict]) -> None:
+async def apply_ai_summaries(new_items: list[dict], park_id: str = "") -> None:
     """对新入库的攻略批量调用 AI 提炼，将摘要写回数据库"""
     ai_config = resolve_distill_ai_config()
     if not ai_config:
@@ -349,10 +456,11 @@ async def apply_ai_summaries(new_items: list[dict]) -> None:
         return
 
     logger.info(
-        "开始 AI 提炼，共 %d 条攻略…（api_mode=%s, code=%s）",
+        "开始 AI 提炼，共 %d 条攻略…（api_mode=%s, code=%s, park_id=%s）",
         len(new_items),
         ai_config["api_mode"],
         ai_config.get("code", ""),
+        park_id,
     )
     results = await distill_batch(
         new_items,
@@ -360,6 +468,7 @@ async def apply_ai_summaries(new_items: list[dict]) -> None:
         base_url=ai_config.get("base_url") or None,
         api_mode=ai_config.get("api_mode", "anthropic"),
         model=ai_config.get("model", ""),
+        park_id=park_id,
     )
 
     if not results:
@@ -387,17 +496,18 @@ async def collect(
     login_only: bool = False,
     offset: int = 0,
     max_total: int | None = None,
+    keyword_scope: str = "extended",
 ):
     if not DRISSION_AVAILABLE:
         logger.error("DrissionPage 未安装，无法运行采集器")
         return
 
-    keywords = PARK_KEYWORDS.get(park_id, [])
+    keywords = _generate_search_keywords(park_id, scope=keyword_scope)
     if not keywords:
         logger.error(f"未找到乐园 {park_id} 的关键词配置")
         return
 
-    logger.info(f"开始采集 {park_id} 攻略，关键词：{keywords}")
+    logger.info(f"开始采集 {park_id} 攻略，关键词范围={keyword_scope}，共 {len(keywords)} 个关键词：{keywords}")
     page = create_browser()
 
     try:
@@ -468,7 +578,7 @@ async def collect(
         logger.info(f"新入库 {len(new_items)} 条攻略（跳过已存在的）")
 
         if enable_distill and new_items:
-            await apply_ai_summaries(new_items)
+            await apply_ai_summaries(new_items, park_id=park_id)
 
     finally:
         page.quit()
@@ -480,13 +590,15 @@ if __name__ == "__main__":
     logging.getLogger(__name__).setLevel(logging.INFO)
 
     parser = argparse.ArgumentParser(description="迪士尼攻略采集器")
-    parser.add_argument("--park", default="hongkong_disney", choices=list(PARK_KEYWORDS.keys()))
+    parser.add_argument("--park", default="hongkong_disney", choices=list(_BASE_KEYWORDS.keys()))
     parser.add_argument("--limit", type=int, default=20, help="每个关键词采集数量")
     parser.add_argument("--offset", type=int, default=0, help="跳过前 N 条搜索结果（用于续采或避免重复采集热门笔记）")
     parser.add_argument("--max-total", type=int, default=None, help="限制本次采集的总条数上限（不含数据库已有）")
     parser.add_argument("--no-distill", action="store_true", help="跳过 AI 提炼步骤")
     parser.add_argument("--force-login", action="store_true", help="忽略已保存登录态，强制重新登录")
     parser.add_argument("--login-only", action="store_true", help="仅执行登录，不开始采集")
+    parser.add_argument("--keyword-scope", default="extended", choices=["basic", "extended", "full"],
+                       help="关键词范围：basic(基础4-5个) / extended(基础+场景~15个) / full(全部~30个)")
     args = parser.parse_args()
 
     asyncio.run(collect(
@@ -497,4 +609,5 @@ if __name__ == "__main__":
         login_only=args.login_only,
         offset=args.offset,
         max_total=args.max_total,
+        keyword_scope=args.keyword_scope,
     ))

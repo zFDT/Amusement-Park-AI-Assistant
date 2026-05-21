@@ -62,6 +62,8 @@ app.include_router(parks.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
 app.include_router(strategies.router, prefix="/api")
 app.include_router(vision.router, prefix="/api")
+from app.api.routes import compare
+app.include_router(compare.router, prefix="/api")
 
 
 @app.get("/api/health")
