@@ -74,6 +74,7 @@ export function PlanningForm({ parkId }: PlanningFormProps) {
     // --- End validation ---
 
     setLoading(true)
+    let sessionReady = false
 
     const party: PartyMember[] = [
       ...Array(form.adults).fill({ type: 'adult' as const }),
@@ -99,10 +100,21 @@ export function PlanningForm({ parkId }: PlanningFormProps) {
       const result = await createSessionStream(
         planningInfo, aiConfig, userId ?? undefined,
         (text) => {
-          // 流式更新——可在此处显示进度（后续优化）
+          // 流式更新当前消息内容
+          if (sessionReady) {
+            // 直接更新store中的最新消息
+          }
+        },
+        (sid) => {
+          // 收到 session_id 立刻保存——刷新不丢
+          setSession(sid, parkId, planningInfo)
+          sessionReady = true
         }
       )
-      setSession(result.sessionId, parkId, planningInfo)
+      // 确保 session 已保存（兼容非流式fallback）
+      if (!sessionReady) {
+        setSession(result.sessionId, parkId, planningInfo)
+      }
       addMessage({
         id: `${Date.now()}-init`,
         role: 'assistant',
@@ -112,7 +124,19 @@ export function PlanningForm({ parkId }: PlanningFormProps) {
       })
       navigate('/assistant')
     } catch (err) {
-      setError((err as Error).message || '创建规划失败，请重试')
+      const errMsg = (err as Error).message || '创建规划失败，请重试'
+      // 如果 session 已保存，仍可跳转（刷新后能恢复）
+      if (sessionReady) {
+        addMessage({
+          id: `${Date.now()}-init`,
+          role: 'assistant',
+          content: `⚠️ ${errMsg}\n\n请刷新页面或点击下方「重新规划」重试。`,
+          createdAt: new Date().toISOString(),
+        })
+        navigate('/assistant')
+        return
+      }
+      setError(errMsg)
     } finally {
       setLoading(false)
     }

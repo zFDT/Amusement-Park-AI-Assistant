@@ -58,6 +58,12 @@ export interface CreateSessionResponse {
   route: RouteItem[]
 }
 
+/** 获取会话消息历史（刷新恢复用） */
+export async function getSessionMessages(sessionId: string): Promise<{ role: string; content: string; created_at?: string }[]> {
+  const res = await request<{ messages: { role: string; content: string; created_at?: string }[] }>(`/sessions/${sessionId}/messages`)
+  return res.messages || []
+}
+
 export interface ResumeSessionResponse {
   sessionId: string
   planning: PlanningInfo
@@ -91,12 +97,16 @@ export function createSession(planningInfo: PlanningInfo, aiConfig?: AIConfig | 
   }, SESSION_TIMEOUT_MS)
 }
 
-/** 流式创建会话：通过 SSE 实时获取 AI 路线生成进度，无超时限制 */
+/** 流式创建会话：通过 SSE 实时获取 AI 路线生成进度，无超时限制。
+ *  - onSession: 收到 session_id 时立即回调（用于提前保存，刷新可恢复）
+ *  - onProgress: 收到文本增量时回调
+ */
 export async function createSessionStream(
   planningInfo: PlanningInfo,
   aiConfig: AIConfig | null | undefined,
   userId: string | undefined,
   onProgress: (text: string) => void,
+  onSession?: (sessionId: string) => void,
 ): Promise<CreateSessionResponse> {
   const body = JSON.stringify({
     park_id: planningInfo.parkId,
@@ -148,6 +158,7 @@ export async function createSessionStream(
         const event = JSON.parse(data)
         if (event.type === 'session') {
           sessionId = event.session_id
+          onSession?.(sessionId)
         } else if (event.type === 'text') {
           initialPlan += event.content
           onProgress(initialPlan)
@@ -196,11 +207,6 @@ export function resumeByCode(code: string): Promise<ResumeSessionResponse> {
     completedAttractions: raw.completed_attractions,
     currentLocation: raw.current_location,
   }))
-}
-
-export function getSessionMessages(sessionId: string): Promise<{ sessionId: string; messages: Array<{ role: string; content: string }> }> {
-  return request<{ session_id: string; messages: Array<{ role: string; content: string }> }>(`/sessions/${sessionId}/messages`)
-    .then((r) => ({ sessionId: r.session_id, messages: r.messages }))
 }
 
 export function getWaitTimes(parkId: string): Promise<WaitTimesResponse> {

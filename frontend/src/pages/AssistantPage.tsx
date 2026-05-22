@@ -4,7 +4,7 @@ import { RotateCcw, Map, List, Share2, Copy, Check, ChevronLeft, MapPin, X } fro
 import { useAppStore } from '@/store/sessionStore'
 import { ChatWindow } from '@/components/chat/ChatWindow'
 import { WaitTimePanel } from '@/components/waittime/WaitTimePanel'
-import { shareSession } from '@/services/api'
+import { shareSession, getSessionMessages } from '@/services/api'
 
 type Tab = 'chat' | 'waittimes'
 
@@ -12,7 +12,7 @@ export function AssistantPage() {
   const navigate = useNavigate()
   const {
     sessionId, parkId, planningInfo, messages, resetSession,
-    currentLocation, completedAttractions,
+    currentLocation, completedAttractions, addMessage,
   } = useAppStore()
   const [activeTab, setActiveTab] = useState<Tab>('chat')
   const [shareCode, setShareCode] = useState<string | null>(null)
@@ -20,12 +20,35 @@ export function AssistantPage() {
   const [copied, setCopied] = useState(false)
   const [sharing, setSharing] = useState(false)
   const [showResetConfirm, setShowResetConfirm] = useState(false)
+  const [recovering, setRecovering] = useState(false)
 
   useEffect(() => {
     if (!sessionId || !parkId) {
       navigate('/visits')
     }
   }, [sessionId, parkId, navigate])
+
+  // 页面加载时恢复消息（刷新后自动拉回）
+  useEffect(() => {
+    if (!sessionId || messages.length > 0) return
+    setRecovering(true)
+    getSessionMessages(sessionId)
+      .then((msgs) => {
+        if (msgs.length > 0) {
+          // 批量恢复消息（跳过 store 中已有的空消息）
+          for (const m of msgs) {
+            addMessage({
+              id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              role: m.role || 'assistant',
+              content: m.content || '',
+              createdAt: m.created_at || new Date().toISOString(),
+            })
+          }
+        }
+      })
+      .catch(() => { /* 静默失败，用户可手动重新规划 */ })
+      .finally(() => setRecovering(false))
+  }, [sessionId])
 
   const handleReset = () => {
     setShowResetConfirm(true)
