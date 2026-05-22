@@ -29,8 +29,9 @@ async def lifespan(app: FastAPI):
 
     # Check Database
     try:
+        from sqlalchemy import text
         async with engine.begin() as conn:
-            await conn.execute(await conn.run_sync(lambda c: c.execute.__func__))
+            await conn.execute(text("SELECT 1"))
         logger.info("✅ 数据库连接正常: %s", settings.database_url.split("@")[-1] if "@" in settings.database_url else settings.database_url)
     except Exception as e:
         logger.warning("⚠️  数据库不可用 (%s)，攻略/排队数据将受影响", e)
