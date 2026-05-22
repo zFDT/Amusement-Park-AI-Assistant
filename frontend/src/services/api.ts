@@ -3,10 +3,11 @@ import { toServerAIConfig } from '@/services/aiConfig'
 
 const BASE_URL = '/api'
 const REQUEST_TIMEOUT_MS = 30_000 // 30s timeout for regular requests
+const SESSION_TIMEOUT_MS = 120_000 // 2min timeout for AI session creation (v4-pro thinking can be slow)
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
+async function request<T>(path: string, options?: RequestInit, timeoutMs?: number): Promise<T> {
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs ?? REQUEST_TIMEOUT_MS)
 
   try {
     const res = await fetch(`${BASE_URL}${path}`, {
@@ -87,7 +88,7 @@ export function createSession(planningInfo: PlanningInfo, aiConfig?: AIConfig | 
       user_id: userId,
       ai_config: toServerAIConfig(aiConfig),
     }),
-  })
+  }, SESSION_TIMEOUT_MS)
 }
 
 export function updateSession(
