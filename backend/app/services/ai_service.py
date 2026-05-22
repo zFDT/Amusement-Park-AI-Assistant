@@ -20,7 +20,7 @@ API_MODE_DEFAULTS = {
     "ollama": ("http://localhost:11434", "llama3.1"),
     "anthropic": ("https://api.anthropic.com", settings.claude_model),
     "gemini": ("https://generativelanguage.googleapis.com/v1beta", "gemini-2.5-pro"),
-    "deepseek": ("https://api.deepseek.com", "deepseek-v4-flash"),
+    "deepseek": ("https://api.deepseek.com/v1", "deepseek-v4-flash"),
 }
 
 SUPPORTED_API_MODES = set(API_MODE_DEFAULTS.keys())

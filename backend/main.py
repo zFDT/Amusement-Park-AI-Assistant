@@ -99,8 +99,9 @@ async def health():
 
     # Check Database
     try:
+        from sqlalchemy import text
         async with engine.begin() as conn:
-            await conn.execute(await conn.run_sync(lambda c: c.execute.__func__))
+            await conn.execute(text("SELECT 1"))
         status["dependencies"]["database"] = "healthy"
     except Exception:
         status["dependencies"]["database"] = "unhealthy"
