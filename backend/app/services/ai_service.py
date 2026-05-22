@@ -451,3 +451,55 @@ async def generate_initial_plan(
     )
     logger.info("[AI:%s] response_complete %s", request_id, _json_dumps({"text": text, "route": [r.model_dump() for r in route]}))
     return text, route
+
+
+async def generate_initial_plan_stream(
+    planning: PlanningInfo,
+    wait_times_json: str,
+    strategy_snippets: list[str] | None = None,
+    ai_config: AIConfig | None = None,
+):
+    """流式版本：逐字 yield 路线规划内容，最后 yield route 解析结果。
+    
+    用法：
+        async for chunk in generate_initial_plan_stream(...):
+            # chunk = {"type":"text","content":"..."} 或 {"type":"route","route":[...]} 或 {"type":"error","message":"..."}
+    """
+    request_id = uuid.uuid4().hex[:12]
+    current_time = datetime.now(timezone.utc).astimezone().isoformat()
+    system_prompt = build_system_prompt(
+        planning=planning,
+        wait_times_json=wait_times_json,
+        current_time=current_time,
+        completed_attractions=[],
+        current_location=None,
+        strategy_snippets=strategy_snippets,
+    )
+    _log_ai_event(request_id, "context", {
+        "mode": "generate_initial_plan_stream",
+        "planning": planning.model_dump(),
+        "system_prompt": system_prompt,
+    })
+
+    accumulated = ""
+    try:
+        async for chunk in _stream_provider_text(
+            system_prompt,
+            [{"role": "user", "content": "请根据我的信息，为我生成一份完整的今日游园路线规划。"}],
+            ai_config,
+            request_id,
+        ):
+            accumulated += chunk
+            yield {"type": "text", "content": chunk}
+    except Exception as e:
+        _log_ai_event(request_id, "error", {"error": str(e)})
+        yield {"type": "error", "message": str(e)}
+        return
+
+    route = _parse_route_from_text(accumulated) or []
+    _log_ai_event(request_id, "response", {
+        "text": accumulated,
+        "route": [r.model_dump() for r in route],
+    })
+    yield {"type": "route", "route": [r.model_dump() for r in route]}
+    yield {"type": "done"}

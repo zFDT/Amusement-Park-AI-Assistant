@@ -3,7 +3,7 @@ import { toServerAIConfig } from '@/services/aiConfig'
 
 const BASE_URL = '/api'
 const REQUEST_TIMEOUT_MS = 30_000 // 30s timeout for regular requests
-const SESSION_TIMEOUT_MS = 120_000 // 2min timeout for AI session creation (v4-pro thinking can be slow)
+const SESSION_TIMEOUT_MS = 300_000 // 5min timeout for AI session creation (v4-pro thinking + large prompt)
 
 async function request<T>(path: string, options?: RequestInit, timeoutMs?: number): Promise<T> {
   const controller = new AbortController()
@@ -89,6 +89,82 @@ export function createSession(planningInfo: PlanningInfo, aiConfig?: AIConfig | 
       ai_config: toServerAIConfig(aiConfig),
     }),
   }, SESSION_TIMEOUT_MS)
+}
+
+/** 流式创建会话：通过 SSE 实时获取 AI 路线生成进度，无超时限制 */
+export async function createSessionStream(
+  planningInfo: PlanningInfo,
+  aiConfig: AIConfig | null | undefined,
+  userId: string | undefined,
+  onProgress: (text: string) => void,
+): Promise<CreateSessionResponse> {
+  const body = JSON.stringify({
+    park_id: planningInfo.parkId,
+    visit_date: planningInfo.visitDate,
+    entry_time: planningInfo.entryTime,
+    exit_time: planningInfo.exitTime,
+    party: planningInfo.party,
+    preferences: planningInfo.preferences,
+    must_do_attractions: planningInfo.mustDoAttractions,
+    fitness_level: planningInfo.fitnessLevel,
+    experience_level: planningInfo.experienceLevel,
+    special_notes: planningInfo.specialNotes,
+    special_needs: planningInfo.specialNeeds,
+    user_id: userId,
+    ai_config: toServerAIConfig(aiConfig),
+  })
+
+  const res = await fetch('/api/sessions/stream', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body,
+  })
+
+  if (!res.ok) {
+    let detail = '创建会话失败'
+    try { const err = await res.json(); detail = err.detail || detail } catch {}
+    throw new Error(detail)
+  }
+
+  const reader = res.body?.getReader()
+  if (!reader) throw new Error('无法读取响应流')
+
+  const decoder = new TextDecoder()
+  let sessionId = ''
+  let initialPlan = ''
+  let route: RouteItem[] | undefined
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+
+    const text = decoder.decode(value, { stream: true })
+    for (const line of text.split('\n')) {
+      if (!line.startsWith('data: ')) continue
+      const data = line.slice(6).trim()
+      if (data === '[DONE]') continue
+
+      try {
+        const event = JSON.parse(data)
+        if (event.type === 'session') {
+          sessionId = event.session_id
+        } else if (event.type === 'text') {
+          initialPlan += event.content
+          onProgress(initialPlan)
+        } else if (event.type === 'route') {
+          route = event.route as RouteItem[]
+        } else if (event.type === 'error') {
+          throw new Error(event.message || 'AI 生成失败')
+        }
+      } catch (e) {
+        if (e instanceof SyntaxError) continue // skip non-JSON lines
+        throw e
+      }
+    }
+  }
+
+  if (!sessionId) throw new Error('未收到会话ID')
+  return { sessionId, initialPlan, route }
 }
 
 export function updateSession(

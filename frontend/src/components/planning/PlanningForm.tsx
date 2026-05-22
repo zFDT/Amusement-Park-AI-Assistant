@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronRight, Users, Calendar, Heart, Star } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { createSession } from '@/services/api'
+import { createSessionStream } from '@/services/api'
 import { useAppStore } from '@/store/sessionStore'
 import type { PlanningInfo, PreferenceTag, PartyMember, ParkId } from '@/types'
 
@@ -96,7 +96,12 @@ export function PlanningForm({ parkId }: PlanningFormProps) {
     }
 
     try {
-      const result = await createSession(planningInfo, aiConfig, userId ?? undefined)
+      const result = await createSessionStream(
+        planningInfo, aiConfig, userId ?? undefined,
+        (text) => {
+          // 流式更新——可在此处显示进度（后续优化）
+        }
+      )
       setSession(result.sessionId, parkId, planningInfo)
       addMessage({
         id: `${Date.now()}-init`,

@@ -21,7 +21,7 @@ from app.schemas import (
     ResumeSessionResponse,
     PlanningInfo,
 )
-from app.services.ai_service import generate_initial_plan, stream_chat_response
+from app.services.ai_service import generate_initial_plan, generate_initial_plan_stream, stream_chat_response
 from app.services.waittime_service import fetch_wait_times, wait_times_to_json
 from app.services.strategy_service import get_strategy_snippets
 
@@ -155,6 +155,76 @@ async def create_session(request: CreateSessionRequest):
         initial_plan=initial_plan,
         route=route,
     )
+
+
+@router.post("/sessions/stream")
+async def create_session_stream(request: CreateSessionRequest):
+    """流式版本：逐字返回 AI 路线规划，前端可实时展示生成进度。"""
+    session_id = str(uuid.uuid4())
+
+    try:
+        wait_times = await fetch_wait_times(request.park_id)
+        wt_json = wait_times_to_json(wait_times)
+    except Exception as e:
+        logger.warning("排队数据获取失败: %s", e)
+        wt_json = "{}"
+
+    strategy_snippets: list[str] = []
+    try:
+        async for db in get_db():
+            strategy_snippets = await get_strategy_snippets(
+                db, request.park_id,
+                preferences=request.preferences if hasattr(request, 'preferences') else None,
+            )
+    except Exception as e:
+        logger.warning("攻略摘要获取失败: %s", e)
+
+    async def event_stream():
+        accumulated = ""
+        try:
+            yield f"data: {json.dumps({'type': 'session', 'session_id': session_id})}\n\n"
+        except Exception:
+            pass
+
+        try:
+            async for chunk in generate_initial_plan_stream(
+                request, wt_json, strategy_snippets, ai_config=request.ai_config
+            ):
+                if chunk["type"] == "text":
+                    accumulated += chunk["content"]
+                    yield f"data: {json.dumps({'type': 'text', 'content': chunk['content']})}\n\n"
+                elif chunk["type"] == "route":
+                    yield f"data: {json.dumps({'type': 'route', 'route': chunk['route']})}\n\n"
+                elif chunk["type"] == "error":
+                    yield f"data: {json.dumps({'type': 'error', 'message': chunk['message']})}\n\n"
+                    return
+                elif chunk["type"] == "done":
+                    break
+        except Exception as e:
+            logger.error("流式规划生成失败: %s", e)
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            return
+
+        # Persist session
+        redis_ok = is_redis_available()
+        if redis_ok:
+            try:
+                session_data = {
+                    "session_id": session_id,
+                    "planning": request.model_dump(),
+                    "completed_attractions": [],
+                    "current_location": None,
+                    "user_id": request.user_id,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                }
+                await _save_session(session_id, session_data)
+                await _save_messages(session_id, [{"role": "assistant", "content": accumulated}])
+            except Exception:
+                logger.warning("会话持久化失败")
+
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @router.patch("/sessions/{session_id}", response_model=UpdateSessionResponse)
