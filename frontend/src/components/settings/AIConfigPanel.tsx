@@ -45,14 +45,15 @@ export function AIConfigPanel() {
     setError(null)
 
     if (form.source === 'internal') {
-      if ((form.internalCode ?? '').trim() !== 'vip666') {
-        setError('配置错误：内测码不正确')
+      const code = (form.internalCode ?? '').trim()
+      if (!code) {
+        setError('请输入内测码')
         return
       }
 
       setAIConfig({
         source: 'internal',
-        internalCode: 'vip666',
+        internalCode: code,
       })
       setSaved(true)
       setExpanded(false)

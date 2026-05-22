@@ -50,13 +50,13 @@ def _coalesce(value: str | None, fallback: str) -> str:
 
 def _resolve_runtime_config(ai_config: AIConfig | None) -> dict[str, str]:
     if ai_config and ai_config.source == "internal":
-        code = (ai_config.internal_code or "").strip()
+        code = (ai_config.internal_code or "").strip().lower()
         if not code:
             raise HTTPException(status_code=400, detail="配置错误：请填写内测码")
 
-        profile = next((item for item in settings.ai_internal_profiles if item.code == code), None)
+        profile = next((item for item in settings.ai_internal_profiles if item.code.lower() == code), None)
         if profile is None:
-            raise HTTPException(status_code=400, detail="配置错误：内测码不正确或未配置对应 AI 配置")
+            raise HTTPException(status_code=400, detail=f"配置错误：内测码 '{ai_config.internal_code}' 未匹配到可用配置")
 
         api_mode = profile.api_mode if profile.api_mode in SUPPORTED_API_MODES else "anthropic"
         base_url = _coalesce(profile.base_url, API_MODE_DEFAULTS[api_mode][0])
