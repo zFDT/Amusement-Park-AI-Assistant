@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from app.core.config import settings
-from app.core.redis_client import get_redis, is_redis_available
+from app.core.redis_client import get_redis, is_redis_available, check_rate_limit, increment_rate_limit
 from app.core.database import get_db
 from app.schemas import (
     ChatRequest,
@@ -98,10 +98,20 @@ async def create_session(request: CreateSessionRequest):
     except Exception as e:
         logger.warning("攻略摘要获取失败: %s", e)
 
+    # Rate limit check (per-user)
+    if request.user_id:
+        allowed, limit_msg = await check_rate_limit(request.user_id)
+        if not allowed:
+            raise HTTPException(status_code=429, detail=limit_msg)
+
     # Generate plan first — this is the expensive/critical part
     initial_plan, route = await generate_initial_plan(
-        request, wt_json, strategy_snippets, ai_config=request.ai_config
+        request, wt_json, strategy_snippets, ai_config=request.ai_config, user_id=request.user_id
     )
+
+    # Increment rate limit counter after successful call
+    if request.user_id:
+        await increment_rate_limit(request.user_id)
 
     # Try to persist session to Redis (non-blocking — don't fail the response)
     session_persisted = False
@@ -173,6 +183,15 @@ async def create_session_stream(request: CreateSessionRequest):
 
     async def event_stream():
         accumulated = ""
+        # Rate limit check inside stream (so error propagates via SSE)
+        if request.user_id:
+            allowed, limit_msg = await check_rate_limit(request.user_id)
+            if not allowed:
+                yield f"data: {json.dumps({'type': 'error', 'message': limit_msg})}\n\n"
+                yield "data: [DONE]\n\n"
+                return
+            await increment_rate_limit(request.user_id)
+
         try:
             yield f"data: {json.dumps({'type': 'session', 'session_id': session_id})}\n\n"
         except Exception:
@@ -180,7 +199,7 @@ async def create_session_stream(request: CreateSessionRequest):
 
         try:
             async for chunk in generate_initial_plan_stream(
-                request, wt_json, strategy_snippets, ai_config=request.ai_config
+                request, wt_json, strategy_snippets, ai_config=request.ai_config, user_id=request.user_id
             ):
                 if chunk["type"] == "text":
                     accumulated += chunk["content"]
@@ -310,6 +329,15 @@ async def chat_stream(request: ChatRequest):
         messages[-1]["content"] += progress_hint
 
     async def event_stream():
+        # Rate limit check
+        if request.user_id:
+            allowed, limit_msg = await check_rate_limit(request.user_id)
+            if not allowed:
+                yield f"data: {json.dumps({'type': 'error', 'content': limit_msg}, ensure_ascii=False)}\n\n"
+                yield "data: [DONE]\n\n"
+                return
+            await increment_rate_limit(request.user_id)
+
         accumulated = ""
         try:
             async for chunk in stream_chat_response(
@@ -320,6 +348,7 @@ async def chat_stream(request: ChatRequest):
                 current_location=request.current_location,
                 strategy_snippets=strategy_snippets,
                 ai_config=request.ai_config,
+                user_id=request.user_id,
             ):
                 if chunk["type"] == "text":
                     accumulated += chunk["content"]

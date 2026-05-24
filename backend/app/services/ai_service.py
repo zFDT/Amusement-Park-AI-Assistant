@@ -150,7 +150,7 @@ def _normalize_messages(messages: Iterable[dict], api_mode: str) -> list[dict]:
     return normalized
 
 
-def _build_payload(system_prompt: str, messages: list[dict], runtime: dict[str, str], stream: bool) -> tuple[str, dict, dict]:
+def _build_payload(system_prompt: str, messages: list[dict], runtime: dict[str, str], stream: bool, user_id: str | None = None) -> tuple[str, dict, dict]:
     api_mode = runtime["api_mode"]
     base_url = runtime["base_url"].rstrip("/")
     api_key = runtime["api_key"]
@@ -218,6 +218,10 @@ def _build_payload(system_prompt: str, messages: list[dict], runtime: dict[str, 
             # reasoning_effort: low/medium→high, high(默认), max(复杂Agent场景)
             # high 适合路线规划场景，避免 max 消耗过多思考 token
             payload["reasoning_effort"] = "high"
+        # DeepSeek user_id 隔离：内容安全、KVCache、调度隔离
+        # https://api-docs.deepseek.com/zh-cn/quick_start/rate_limit
+        if user_id:
+            payload["user_id"] = user_id
         headers = {"Authorization": f"Bearer {api_key}"}
         return url, payload, headers
 
@@ -298,9 +302,10 @@ async def _stream_provider_text(
     messages: list[dict],
     ai_config: AIConfig | None,
     request_id: str,
+    user_id: str | None = None,
 ) -> AsyncIterator[str]:
     runtime = _resolve_runtime_config(ai_config)
-    url, payload, headers = _build_payload(system_prompt, messages, runtime, stream=True)
+    url, payload, headers = _build_payload(system_prompt, messages, runtime, stream=True, user_id=user_id)
 
     _log_ai_event(
         request_id,
@@ -342,9 +347,9 @@ async def _stream_provider_text(
             raise
 
 
-async def _collect_response_text(system_prompt: str, messages: list[dict], ai_config: AIConfig | None, request_id: str) -> str:
+async def _collect_response_text(system_prompt: str, messages: list[dict], ai_config: AIConfig | None, request_id: str, user_id: str | None = None) -> str:
     chunks: list[str] = []
-    async for chunk in _stream_provider_text(system_prompt, messages, ai_config, request_id):
+    async for chunk in _stream_provider_text(system_prompt, messages, ai_config, request_id, user_id=user_id):
         chunks.append(chunk)
     return "".join(chunks)
 
@@ -357,6 +362,7 @@ async def stream_chat_response(
     current_location: dict | None,
     strategy_snippets: list[str] | None = None,
     ai_config: AIConfig | None = None,
+    user_id: str | None = None,
 ) -> AsyncIterator[dict]:
     request_id = uuid.uuid4().hex[:12]
     current_time = datetime.now(timezone.utc).astimezone().isoformat()
@@ -384,7 +390,7 @@ async def stream_chat_response(
     )
     accumulated = ""
 
-    async for text in _stream_provider_text(system_prompt, messages, ai_config, request_id):
+    async for text in _stream_provider_text(system_prompt, messages, ai_config, request_id, user_id=user_id):
         accumulated += text
         yield {"type": "text", "content": text}
 
@@ -409,6 +415,7 @@ async def generate_initial_plan(
     wait_times_json: str,
     strategy_snippets: list[str] | None = None,
     ai_config: AIConfig | None = None,
+    user_id: str | None = None,
 ) -> tuple[str, list[RouteItem]]:
     request_id = uuid.uuid4().hex[:12]
     current_time = datetime.now(timezone.utc).astimezone().isoformat()
@@ -447,6 +454,7 @@ async def generate_initial_plan(
         ],
         ai_config,
         request_id,
+        user_id=user_id,
     )
     route = _parse_route_from_text(text) or []
     _log_ai_event(
@@ -466,6 +474,7 @@ async def generate_initial_plan_stream(
     wait_times_json: str,
     strategy_snippets: list[str] | None = None,
     ai_config: AIConfig | None = None,
+    user_id: str | None = None,
 ):
     """流式版本：逐字 yield 路线规划内容，最后 yield route 解析结果。
     
@@ -496,6 +505,7 @@ async def generate_initial_plan_stream(
             [{"role": "user", "content": f"请根据我的信息，为我生成一份完整的 {planning.visit_date} 游园路线规划。"}],
             ai_config,
             request_id,
+            user_id=user_id,
         ):
             accumulated += chunk
             yield {"type": "text", "content": chunk}
