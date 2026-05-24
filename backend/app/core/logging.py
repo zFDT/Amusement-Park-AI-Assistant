@@ -14,11 +14,13 @@ from __future__ import annotations
 import json
 import logging
 import os
+from contextvars import ContextVar
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 
 _CONFIGURED = False
+correlation_id_ctx: ContextVar[str | None] = ContextVar("correlation_id", default=None)
 
 
 class JsonFormatter(logging.Formatter):
@@ -29,6 +31,7 @@ class JsonFormatter(logging.Formatter):
             "timestamp": self.formatTime(record, self.datefmt),
             "level": record.levelname,
             "logger": record.name,
+            "correlation_id": correlation_id_ctx.get(),
             "message": record.getMessage(),
         }
         if record.exc_info and record.exc_info[0]:
@@ -43,7 +46,21 @@ def _use_json_format() -> bool:
 def _build_formatter() -> logging.Formatter:
     if _use_json_format():
         return JsonFormatter()
-    return logging.Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s")
+    return logging.Formatter("%(asctime)s %(levelname)s [%(name)s] [%(correlation_id)s] %(message)s")
+
+
+class TextFormatter(logging.Formatter):
+    """支持 Correlation ID 的文本格式器。"""
+
+    def format(self, record: logging.LogRecord) -> str:
+        record.correlation_id = correlation_id_ctx.get() or "-"
+        return super().format(record)
+
+
+def _build_formatter() -> logging.Formatter:
+    if _use_json_format():
+        return JsonFormatter()
+    return TextFormatter("%(asctime)s %(levelname)s [%(name)s] [%(correlation_id)s] %(message)s")
 
 
 def _build_file_handler(path: Path, level: int) -> logging.Handler:

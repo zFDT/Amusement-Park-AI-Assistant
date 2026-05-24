@@ -31,7 +31,7 @@
 - [x] **Task 1.3**: 优化 SSE `event_stream`，确保在任何错误发生时都能发送一个 `type: error` 的数据包。 (已完成)
 
 ### 阶段二：P1 观测性与体验改进 (预计 12h)
-- [ ] **Task 2.1**: 引入 Correlation ID (Trace ID)，打通 `access.log` 和 `app.log`。
+- [x] **Task 2.1**: 引入 Correlation ID (Trace ID)，打通 `access.log` 和 `app.log`。 (已完成)
 - [ ] **Task 2.2**: 前端增加请求重试逻辑和更详细的后端错误文案展示。
 
 ### 阶段三：P2 性能优化 (预计 10h)

@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import uuid
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -6,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.core.logging import configure_logging
+from app.core.logging import configure_logging, correlation_id_ctx
 from app.core.config import settings
 from app.core.redis_client import close_redis, get_redis
 from app.core.database import engine
@@ -52,6 +53,18 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+@app.middleware("http")
+async def correlation_id_middleware(request: Request, call_next):
+    """请求追踪中间件：生成并注入 Correlation ID。"""
+    request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+    token = correlation_id_ctx.set(request_id)
+    try:
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        return response
+    finally:
+        correlation_id_ctx.reset(token)
 
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
