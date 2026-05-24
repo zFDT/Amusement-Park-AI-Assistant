@@ -1,7 +1,10 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.logging import configure_logging
 from app.core.config import settings
@@ -49,6 +52,40 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """处理标准的 HTTP 异常，记录路径并返回结构化 JSON。"""
+    import logging
+    logger = logging.getLogger("app.error")
+    logger.error("HTTP Error on %s: %s - %s", request.url, exc.status_code, exc.detail)
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+    )
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """处理捕获所有未捕获的系统异常，防止泄露堆栈信息。"""
+    import logging
+    logger = logging.getLogger("app.error")
+    logger.exception("Unhandled Exception on %s: %s", request.url, exc)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "内部服务器错误，请联系管理员或稍后重试"},
+    )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """处理请求参数校验失败。"""
+    import logging
+    logger = logging.getLogger("app.error")
+    logger.error("Validation Error on %s: %s", request.url, exc.errors())
+    return JSONResponse(
+        status_code=422,
+        content={"detail": "参数校验失败", "errors": exc.errors()},
+    )
+
 
 app.add_middleware(
     CORSMiddleware,
