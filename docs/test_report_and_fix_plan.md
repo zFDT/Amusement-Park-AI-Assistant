@@ -1,5 +1,10 @@
 # 生产环境模拟测试报告与修复计划
 
+> **状态：✅ 全部完成并部署到生产服务器 (zhang@your-server-ip)**
+> **部署时间**：2026-05-24 16:01 CST
+> **部署方式**：GitHub Deploy Key → `git fetch origin master && git reset --hard`
+> **后续更新**：本地 `git push origin master`，服务器 `git pull` + 重启 uvicorn 即可
+
 ## 1. 测试综述
 - **测试时间**：2026-05-24
 - **测试对象**：Amusement-Park-AI-Assistant 生产仿真环境
