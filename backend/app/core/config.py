@@ -16,7 +16,7 @@ class Settings(BaseSettings):
 
     anthropic_api_key: str = ""
     database_url: str = "postgresql+asyncpg://youyuan:youyuan@localhost:5432/youyuan"
-    redis_url: str = "redis://localhost:6379"
+    redis_url: str = "redis://127.0.0.1:6379"
     cors_origins: list[str] = ["http://localhost:5173"]
 
     claude_model: str = "claude-sonnet-4-6"
