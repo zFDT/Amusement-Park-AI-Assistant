@@ -5,13 +5,13 @@ type SSEChunkRaw =
   | { type: 'text'; content: string }
   | { type: 'route_update'; route: Array<Record<string, unknown>> }
   | { type: 'done' }
-  | { type: 'error'; message: string }
+  | { type: 'error'; content: string }
 
 type SSEChunk =
   | { type: 'text'; content: string }
   | { type: 'route_update'; route: RouteItem[] }
   | { type: 'done' }
-  | { type: 'error'; message: string }
+  | { type: 'error'; content: string }
 
 /** Convert snake_case keys from backend SSE to camelCase for frontend */
 function normalizeRouteItem(raw: Record<string, unknown>): RouteItem {

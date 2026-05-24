@@ -5,7 +5,12 @@ const BASE_URL = '/api'
 const REQUEST_TIMEOUT_MS = 30_000 // 30s timeout for regular requests
 const SESSION_TIMEOUT_MS = 300_000 // 5min timeout for AI session creation (v4-pro thinking + large prompt)
 
-async function request<T>(path: string, options?: RequestInit, timeoutMs?: number): Promise<T> {
+async function request<T>(
+  path: string, 
+  options?: RequestInit, 
+  timeoutMs?: number, 
+  maxRetries: number = 0
+): Promise<T> {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs ?? REQUEST_TIMEOUT_MS)
 
@@ -15,7 +20,15 @@ async function request<T>(path: string, options?: RequestInit, timeoutMs?: numbe
       signal: controller.signal,
       ...options,
     })
+    
     if (!res.ok) {
+      // 对 5xx 错误执行重试（如果是 GET 请求或幂等请求）
+      const isIdempotent = options?.method === 'GET' || !options?.method
+      if (res.status >= 500 && maxRetries > 0 && isIdempotent) {
+        console.warn(`API 请求失败 ${res.status}，准备重试... 剩余次数: ${maxRetries}`)
+        return request<T>(path, options, timeoutMs, maxRetries - 1)
+      }
+
       let detail = '请求失败'
       try {
         const error = await res.json()
@@ -30,6 +43,13 @@ async function request<T>(path: string, options?: RequestInit, timeoutMs?: numbe
     if (err instanceof DOMException && err.name === 'AbortError') {
       throw new Error('请求超时，请检查网络连接后重试')
     }
+    
+    // 网络错误（fetch 失败）重试
+    const isIdempotent = options?.method === 'GET' || !options?.method
+    if (maxRetries > 0 && isIdempotent) {
+      return request<T>(path, options, timeoutMs, maxRetries - 1)
+    }
+    
     throw err
   } finally {
     clearTimeout(timeoutId)

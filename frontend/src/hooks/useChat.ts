@@ -59,7 +59,7 @@ export function useChat() {
               updateLastMessage(accumulated, latestRoute)
               setCurrentRoute(chunk.route)
             } else if (chunk.type === 'error') {
-              updateLastMessage(chunk.message || '抱歉，AI 返回了错误，请重试。', undefined, true)
+              updateLastMessage(chunk.content || '抱歉，AI 返回了错误，请重试。', undefined, true)
             }
           },
           abortRef.current.signal
