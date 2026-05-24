@@ -44,7 +44,9 @@ function renderInline(text: string): React.ReactNode {
 }
 
 function renderMarkdown(text: string): React.ReactNode {
-  const lines = text.split('\n')
+  // 过滤掉 ```route ``` 代码块——路线已通过卡片单独展示，不需要在正文中显示原始 JSON
+  const cleaned = text.replace(/```route\s*\n[\s\S]*?\n```/g, '').replace(/```route[\s\S]*?```/g, '').trim()
+  const lines = cleaned.split('\n')
   const nodes: React.ReactNode[] = []
   let i = 0
 
