@@ -45,3 +45,4 @@ db/dump.sql
 secrets.yaml
 credentials.json
 service-account.json
+logs/archive/
