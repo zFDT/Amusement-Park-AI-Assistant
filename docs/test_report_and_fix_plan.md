@@ -28,7 +28,7 @@
 ### 阶段一：P0 核心可用性修复 (预计 8h)
 - [x] **Task 1.1**: 修复 Redis 连接配置，强制使用 IPv4 地址并增加重试逻辑。 (已完成)
 - [x] **Task 1.2**: 在后端实现全局异常处理器，捕获未预期错误并发回标准 JSON。 (已完成)
-- [ ] **Task 1.3**: 优化 SSE `event_stream`，确保在任何错误发生时都能发送一个 `type: error` 的数据包。
+- [x] **Task 1.3**: 优化 SSE `event_stream`，确保在任何错误发生时都能发送一个 `type: error` 的数据包。 (已完成)
 
 ### 阶段二：P1 观测性与体验改进 (预计 12h)
 - [ ] **Task 2.1**: 引入 Correlation ID (Trace ID)，打通 `access.log` 和 `app.log`。

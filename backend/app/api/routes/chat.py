@@ -357,23 +357,35 @@ async def chat_stream(request: ChatRequest):
 
     async def event_stream():
         accumulated = ""
+        try:
+            async for chunk in stream_chat_response(
+                planning=planning,
+                messages=messages,
+                wait_times_json=wt_json,
+                completed_attractions=completed_attractions,
+                current_location=request.current_location,
+                strategy_snippets=strategy_snippets,
+                ai_config=request.ai_config,
+            ):
+                if chunk["type"] == "text":
+                    accumulated += chunk["content"]
 
-        async for chunk in stream_chat_response(
-            planning=planning,
-            messages=messages,
-            wait_times_json=wt_json,
-            completed_attractions=completed_attractions,
-            current_location=request.current_location,
-            strategy_snippets=strategy_snippets,
-            ai_config=request.ai_config,
-        ):
-            if chunk["type"] == "text":
-                accumulated += chunk["content"]
+                yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
 
-            yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
+            messages.append({"role": "assistant", "content": accumulated})
+            try:
+                await _save_messages(request.session_id, messages)
+            except Exception as e:
+                logger.error("Failed to save message to session %s: %s", request.session_id, e)
+                # 即使保存失败也发送 done，因为 AI 回复已经完整
+                yield f"data: {json.dumps({'type': 'error', 'content': '回复已生成但历史记录同步失败，刷新后可能丢失当前对话'}, ensure_ascii=False)}\n\n"
 
-        messages.append({"role": "assistant", "content": accumulated})
-        await _save_messages(request.session_id, messages)
+        except Exception as e:
+            logger.exception("SSE event_stream failure for session %s", request.session_id)
+            error_msg = str(e) if "detail" not in dir(e) else e.detail
+            yield f"data: {json.dumps({'type': 'error', 'content': f'发生未知错误: {error_msg}'}, ensure_ascii=False)}\n\n"
+        finally:
+            yield "data: {\"type\": \"done\"}\n\n"
 
     return StreamingResponse(
         event_stream(),
