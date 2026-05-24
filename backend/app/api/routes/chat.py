@@ -329,14 +329,15 @@ async def chat_stream(request: ChatRequest):
         messages[-1]["content"] += progress_hint
 
     async def event_stream():
-        # Rate limit check
-        if request.user_id:
-            allowed, limit_msg = await check_rate_limit(request.user_id)
+        # Rate limit check (user_id from session, not ChatRequest)
+        user_id = session.get("user_id")
+        if user_id:
+            allowed, limit_msg = await check_rate_limit(user_id)
             if not allowed:
                 yield f"data: {json.dumps({'type': 'error', 'content': limit_msg}, ensure_ascii=False)}\n\n"
                 yield "data: [DONE]\n\n"
                 return
-            await increment_rate_limit(request.user_id)
+            await increment_rate_limit(user_id)
 
         accumulated = ""
         try:
@@ -348,7 +349,7 @@ async def chat_stream(request: ChatRequest):
                 current_location=request.current_location,
                 strategy_snippets=strategy_snippets,
                 ai_config=request.ai_config,
-                user_id=request.user_id,
+                user_id=user_id,
             ):
                 if chunk["type"] == "text":
                     accumulated += chunk["content"]
