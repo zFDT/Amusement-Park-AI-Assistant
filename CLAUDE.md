@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+本项目为开源软件（游园助理 — AI 驱动的迪士尼乐园游园路线规划助理）。通用 AI 编程助手请参阅 [AGENTS.md](./AGENTS.md)。
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## 关键约束
