@@ -1,12 +1,12 @@
 import type { StateCreator } from 'zustand'
-import type { RouteItem, Location, PlanningInfo } from '@/types'
+import type { RouteItem, Location } from '@/types'
 import { updateSession } from '@/services/api'
-import type { AppState } from './sessionStore'
 
-export interface PlanSlice {
+interface PlanState {
   currentRoute: RouteItem[]
   completedAttractions: string[]
   currentLocation: Location | null
+}
 
   setCurrentRoute: (route: RouteItem[]) => void
   markAttractionComplete: (attractionId: string) => Promise<void>

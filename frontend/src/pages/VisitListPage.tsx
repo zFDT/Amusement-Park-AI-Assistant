@@ -63,8 +63,8 @@ export function VisitListPage() {
 
     let initialMessages: Message[] = []
     try {
-      const res = await getSessionMessages(visit.visitId)
-      initialMessages = res.messages.map((m, i) => ({
+      const msgs = await getSessionMessages(visit.visitId)
+      initialMessages = msgs.map((m, i) => ({
         id: `${visit.visitId}-${i}`,
         role: m.role as Message['role'],
         content: m.content,

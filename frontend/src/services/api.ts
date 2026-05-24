@@ -59,7 +59,7 @@ async function request<T>(
 export interface CreateSessionResponse {
   sessionId: string
   initialPlan: string
-  route: RouteItem[]
+  route?: RouteItem[]
 }
 
 /** 获取会话消息历史（刷新恢复用） */

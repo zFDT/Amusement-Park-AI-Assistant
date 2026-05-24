@@ -5,6 +5,7 @@ import { useAppStore } from '@/store/sessionStore'
 import { ChatWindow } from '@/components/chat/ChatWindow'
 import { WaitTimePanel } from '@/components/waittime/WaitTimePanel'
 import { getSessionMessages } from '@/services/api'
+import type { Message } from '@/types'
 
 type Tab = 'chat' | 'waittimes'
 
@@ -16,7 +17,6 @@ export function AssistantPage() {
   } = useAppStore()
   const [activeTab, setActiveTab] = useState<Tab>('chat')
   const [showResetConfirm, setShowResetConfirm] = useState(false)
-  const [recovering, setRecovering] = useState(false)
 
   useEffect(() => {
     if (!sessionId || !parkId) {
@@ -27,7 +27,6 @@ export function AssistantPage() {
   // 页面加载时恢复消息（刷新后自动拉回）
   useEffect(() => {
     if (!sessionId || messages.length > 0) return
-    setRecovering(true)
     getSessionMessages(sessionId)
       .then((msgs) => {
         if (msgs.length > 0) {
@@ -35,7 +34,7 @@ export function AssistantPage() {
           for (const m of msgs) {
             addMessage({
               id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-              role: m.role || 'assistant',
+              role: (m.role as Message['role']) || 'assistant',
               content: m.content || '',
               createdAt: m.created_at || new Date().toISOString(),
             })
@@ -43,7 +42,6 @@ export function AssistantPage() {
         }
       })
       .catch(() => { /* 静默失败，用户可手动重新规划 */ })
-      .finally(() => setRecovering(false))
   }, [sessionId])
 
   const handleReset = () => {
