@@ -1,14 +1,36 @@
+# ============================================================
+# .gitignore — 游园助理 (Amusement Park AI Assistant)
+# 本项目为开源软件，以下文件包含本地开发敏感信息，已排除
+# ============================================================
+
+# 环境变量（含 API Key）
 .env
+
+# Python 虚拟环境
 backend/.venv/
+
+# 浏览器数据（小红书采集器的 Chrome Profile，含登录态 Cookie）
 backend/browser_data/
+
+# 采集器备份
 backend/data/collect_backups/
+
+# 前端依赖与构建产物
 frontend/node_modules/
 frontend/dist/
+
+# Python 编译缓存
 __pycache__/
 *.pyc
 *.pyo
+
+# 系统杂项
 .DS_Store
+
+# 日志文件
 *.log
+
+# 数据库备份（含生产数据）
 db/dump.sql
 
 # 安全相关：防止密钥文件泄露
