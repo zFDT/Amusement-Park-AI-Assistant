@@ -7,12 +7,14 @@ v2 更新（2026-05-21）：
 """
 
 import logging
+import json
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select, desc, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.park import Strategy
+from app.core.redis_client import get_redis, is_redis_available
 
 logger = logging.getLogger("app.strategy")
 
@@ -292,12 +294,26 @@ async def get_strategy_snippets(
     """
     多路召回攻略摘要，用于注入 System Prompt。
 
-    v2 新增参数：
+    v2 新增参数/特性：
     - preferences: 用户偏好标签列表，用于偏好匹配召回
-
-    返回格式化的文本片段列表，每条含类型标签和结构化信息。
+    - Redis 缓存：针对相同 park_id/limit/pref 缓存 1 小时，减少高并发下的数据库压力
     """
-    # 四路并行召回
+    # ── 缓存读取 ────────────────────────────────────────────────────────
+    # 构造唯一缓存键：含版本号 v2、乐园ID、数量限制、排序后的偏好列表
+    pref_str = ",".join(sorted(preferences or []))
+    cache_key = f"strategy_snippets:v2:{park_id}:{limit}:{pref_str}"
+    
+    if is_redis_available():
+        try:
+            redis = await get_redis()
+            cached_data = await redis.get(cache_key)
+            if cached_data:
+                logger.debug("Strategy snippets cache hit: %s", cache_key)
+                return json.loads(cached_data)
+        except Exception as e:
+            logger.warning("Strategy snippets cache read failed: %s", e)
+
+    # ── 并行召回 (SQLAlchemy 不真正支持 await 两个 execute, 这里是顺序执行但逻辑独立) ──
     hot = await _fetch_hot_strategies(db, park_id, limit=15)
     diverse = await _fetch_diverse_strategies(db, park_id, limit_per_type=2)
     preference = await _fetch_preference_matched_strategies(
@@ -316,8 +332,18 @@ async def get_strategy_snippets(
         if snippet:
             snippets.append(snippet)
 
+    # ── 缓存存储 ────────────────────────────────────────────────────────
+    if is_redis_available() and snippets:
+        try:
+            redis = await get_redis()
+            # 缓存 1 小时，过期时间随机浮动避免缓存雪崩
+            ttl = 3600 + (300 if hash(cache_key) % 2 == 0 else -300)
+            await redis.setex(cache_key, ttl, json.dumps(snippets))
+        except Exception as e:
+            logger.warning("Strategy snippets cache write failed: %s", e)
+
     logger.info(
-        "攻略召回: park=%s limit=%d pref=%s → hot=%d diverse=%d pref_match=%d recent=%d → final=%d types=%s",
+        "攻略召回: park=%s limit=%d pref=%s → hot=%d diverse=%d pref_match=%d recent=%d → final=%d types=%s (Cache Miss)",
         park_id, limit, preferences,
         len(hot), len(diverse), len(preference), len(recent),
         len(snippets),
