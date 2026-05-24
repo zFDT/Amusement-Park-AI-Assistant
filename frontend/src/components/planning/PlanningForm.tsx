@@ -99,7 +99,7 @@ export function PlanningForm({ parkId }: PlanningFormProps) {
     try {
       const result = await createSessionStream(
         planningInfo, aiConfig, userId ?? undefined,
-        (text) => {
+        (_text) => {
           // 流式更新当前消息内容
           if (sessionReady) {
             // 直接更新store中的最新消息

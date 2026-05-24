@@ -56,22 +56,6 @@ async function request<T>(
   }
 }
 
-function snakeToCamelPlanningInfo(raw: Record<string, unknown>): PlanningInfo {
-  return {
-    parkId: raw.park_id as PlanningInfo['parkId'],
-    visitDate: raw.visit_date as string,
-    entryTime: raw.entry_time as string,
-    exitTime: raw.exit_time as string,
-    party: raw.party as PlanningInfo['party'],
-    preferences: (raw.preferences ?? []) as PlanningInfo['preferences'],
-    mustDoAttractions: (raw.must_do_attractions ?? []) as string[],
-    fitnessLevel: (raw.fitness_level ?? 3) as PlanningInfo['fitnessLevel'],
-    experienceLevel: (raw.experience_level ?? 'first_time') as PlanningInfo['experienceLevel'],
-    specialNotes: (raw.special_notes ?? '') as string,
-    specialNeeds: (raw.special_needs ?? []) as PlanningInfo['specialNeeds'],
-  }
-}
-
 export interface CreateSessionResponse {
   sessionId: string
   initialPlan: string

@@ -1,15 +1,11 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { Sparkles, ChevronLeft } from 'lucide-react'
 import { PlanningForm } from '@/components/planning/PlanningForm'
 import { AIConfigPanel } from '@/components/settings/AIConfigPanel'
-import { useAppStore } from '@/store/sessionStore'
 import { PARKS } from '@/constants/parks'
 import type { ParkId } from '@/types'
 
 export function HomePage() {
-  const navigate = useNavigate()
-  const { resumeSession } = useAppStore()
   const [selectedPark, setSelectedPark] = useState<ParkId | null>(null)
 
   if (selectedPark) {
@@ -98,6 +94,7 @@ export function HomePage() {
               <p className="text-xs text-gray-400">{desc}</p>
             </div>
           ))}
+        </div>
       </div>
     </div>
   )
