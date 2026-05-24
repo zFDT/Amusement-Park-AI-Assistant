@@ -201,7 +201,10 @@ def _build_payload(system_prompt: str, messages: list[dict], runtime: dict[str, 
 
     if api_mode == "deepseek":
         url = f"{base_url}/chat/completions"
-        # 思考模式：reasoner 或 v4-pro 模型启用，需更多 token 配额
+        # 思考模式：reasoner 或 v4-pro 模型启用
+        # 官方文档：https://api-docs.deepseek.com/zh-cn/guides/thinking_mode
+        # 思考 token 与输出 token 共享 max_tokens 配额（官方未明确说明，但实测如此）
+        # 超长 prompt 下思考可能耗尽配额导致空响应，因此提升至 16384 并显式控制思考强度
         thinking_enabled = any(k in model_id.lower() for k in ("reasoner", "v4-pro"))
         max_tokens = 16384 if thinking_enabled else 4096
         payload = {
@@ -212,6 +215,9 @@ def _build_payload(system_prompt: str, messages: list[dict], runtime: dict[str, 
         }
         if thinking_enabled:
             payload["thinking"] = {"type": "enabled"}
+            # reasoning_effort: low/medium→high, high(默认), max(复杂Agent场景)
+            # high 适合路线规划场景，避免 max 消耗过多思考 token
+            payload["reasoning_effort"] = "high"
         headers = {"Authorization": f"Bearer {api_key}"}
         return url, payload, headers
 
