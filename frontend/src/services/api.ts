@@ -84,18 +84,6 @@ export async function getSessionMessages(sessionId: string): Promise<{ role: str
   return res.messages || []
 }
 
-export interface ResumeSessionResponse {
-  sessionId: string
-  planning: PlanningInfo
-  completedAttractions: string[]
-  currentLocation: Record<string, unknown> | null
-}
-
-export interface ShareSessionResponse {
-  code: string
-  expiresInSeconds: number
-}
-
 export function createSession(planningInfo: PlanningInfo, aiConfig?: AIConfig | null, userId?: string): Promise<CreateSessionResponse> {
   return request('/sessions', {
     method: 'POST',
@@ -209,24 +197,6 @@ export function updateSession(
       current_location: data.currentLocation,
     }),
   })
-}
-
-export function shareSession(sessionId: string): Promise<ShareSessionResponse> {
-  return request(`/sessions/${sessionId}/share`, { method: 'POST' })
-}
-
-export function resumeByCode(code: string): Promise<ResumeSessionResponse> {
-  return request<{
-    session_id: string
-    planning: Record<string, unknown>
-    completed_attractions: string[]
-    current_location: Record<string, unknown> | null
-  }>(`/sessions/resume/${code}`).then((raw) => ({
-    sessionId: raw.session_id,
-    planning: snakeToCamelPlanningInfo(raw.planning),
-    completedAttractions: raw.completed_attractions,
-    currentLocation: raw.current_location,
-  }))
 }
 
 export function getWaitTimes(parkId: string): Promise<WaitTimesResponse> {

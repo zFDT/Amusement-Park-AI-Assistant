@@ -17,8 +17,6 @@ from app.schemas import (
     CreateSessionResponse,
     UpdateSessionRequest,
     UpdateSessionResponse,
-    ShareSessionResponse,
-    ResumeSessionResponse,
     PlanningInfo,
 )
 from app.services.ai_service import generate_initial_plan, generate_initial_plan_stream, stream_chat_response
@@ -27,12 +25,6 @@ from app.services.strategy_service import get_strategy_snippets
 
 router = APIRouter()
 logger = logging.getLogger("app.chat")
-
-_SHARE_CODE_TTL = 7 * 24 * 3600  # 7 days
-
-
-def _generate_share_code() -> str:
-    return "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
 
 
 async def _check_redis_available() -> None:
@@ -255,44 +247,6 @@ async def update_session(session_id: str, request: UpdateSessionRequest):
     return UpdateSessionResponse(
         session_id=session_id,
         completed_attractions=session["completed_attractions"],
-    )
-
-
-@router.post("/sessions/{session_id}/share", response_model=ShareSessionResponse)
-async def share_session(session_id: str):
-    """Generate a short 6-char code that maps to this session_id for cross-device resume."""
-    await _get_session(session_id)  # verify session exists
-
-    code = _generate_share_code()
-    redis = await get_redis()
-    # Ensure uniqueness — retry up to 5 times
-    for _ in range(5):
-        existing = await redis.get(f"share:{code}")
-        if not existing:
-            break
-        code = _generate_share_code()
-
-    await redis.setex(f"share:{code}", _SHARE_CODE_TTL, session_id)
-
-    return ShareSessionResponse(code=code, expires_in_seconds=_SHARE_CODE_TTL)
-
-
-@router.get("/sessions/resume/{code}", response_model=ResumeSessionResponse)
-async def resume_session(code: str):
-    """Look up a session by share code and return its state for cross-device resume."""
-    redis = await get_redis()
-    session_id_bytes = await redis.get(f"share:{code.upper()}")
-    if not session_id_bytes:
-        raise HTTPException(status_code=404, detail="Invalid or expired share code")
-
-    session_id = session_id_bytes if isinstance(session_id_bytes, str) else session_id_bytes.decode()
-    session = await _get_session(session_id)
-
-    return ResumeSessionResponse(
-        session_id=session_id,
-        planning=PlanningInfo(**session["planning"]),
-        completed_attractions=session.get("completed_attractions", []),
-        current_location=session.get("current_location"),
     )
 
 

@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { RotateCcw, Map, List, Share2, Copy, Check, ChevronLeft, MapPin, X } from 'lucide-react'
+import { RotateCcw, Map, List, ChevronLeft, MapPin, X } from 'lucide-react'
 import { useAppStore } from '@/store/sessionStore'
 import { ChatWindow } from '@/components/chat/ChatWindow'
 import { WaitTimePanel } from '@/components/waittime/WaitTimePanel'
-import { shareSession, getSessionMessages } from '@/services/api'
+import { getSessionMessages } from '@/services/api'
 
 type Tab = 'chat' | 'waittimes'
 
@@ -15,10 +15,6 @@ export function AssistantPage() {
     currentLocation, completedAttractions, addMessage,
   } = useAppStore()
   const [activeTab, setActiveTab] = useState<Tab>('chat')
-  const [shareCode, setShareCode] = useState<string | null>(null)
-  const [shareError, setShareError] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
-  const [sharing, setSharing] = useState(false)
   const [showResetConfirm, setShowResetConfirm] = useState(false)
   const [recovering, setRecovering] = useState(false)
 
@@ -59,29 +55,6 @@ export function AssistantPage() {
     navigate('/plan')
   }
 
-  const handleShare = async () => {
-    if (!sessionId) return
-    setSharing(true)
-    setShareError(null)
-    setShareCode(null)
-    try {
-      const res = await shareSession(sessionId)
-      setShareCode(res.code)
-    } catch {
-      setShareError('生成恢复码失败，请重试')
-    } finally {
-      setSharing(false)
-    }
-  }
-
-  const handleCopy = () => {
-    if (!shareCode) return
-    navigator.clipboard.writeText(shareCode).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    })
-  }
-
   if (!sessionId || !planningInfo) return null
 
   const parkName = parkId === 'shanghai_disney' ? '上海迪士尼乐园' : '香港迪士尼乐园'
@@ -109,15 +82,6 @@ export function AssistantPage() {
           </div>
         </div>
         <div className="flex items-center gap-1 shrink-0">
-          <button
-            onClick={handleShare}
-            disabled={sharing}
-            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 px-2.5 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
-            title="生成换机恢复码"
-          >
-            <Share2 className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">换机继续</span>
-          </button>
           <button
             onClick={handleReset}
             className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 px-2.5 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
@@ -159,35 +123,6 @@ export function AssistantPage() {
               </button>
             </div>
           </div>
-        </div>
-      )}
-
-      {shareError && (
-        <div className="mx-4 mt-3 p-3 bg-red-50 border border-red-200 rounded-xl">
-          <p className="text-xs text-red-600 text-center">{shareError}</p>
-          <button
-            onClick={handleShare}
-            className="block mx-auto mt-2 text-xs text-red-600 underline hover:text-red-800"
-          >
-            重试
-          </button>
-        </div>
-      )}
-
-      {shareCode && (
-        <div className="mx-4 mt-3 p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between gap-3">
-          <div>
-            <p className="text-xs text-blue-600 font-medium">换机恢复码（7天有效）</p>
-            <p className="text-lg font-mono font-bold text-blue-800 tracking-widest mt-0.5">{shareCode}</p>
-            <p className="text-xs text-blue-500 mt-0.5">在新设备首页输入此码即可继续游园</p>
-          </div>
-          <button
-            onClick={handleCopy}
-            className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 px-3 py-2 rounded-lg hover:bg-blue-100 transition-colors shrink-0"
-          >
-            {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-            {copied ? '已复制' : '复制'}
-          </button>
         </div>
       )}
 

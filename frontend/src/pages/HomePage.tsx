@@ -1,9 +1,8 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Sparkles, LogIn, ChevronLeft } from 'lucide-react'
+import { Sparkles, ChevronLeft } from 'lucide-react'
 import { PlanningForm } from '@/components/planning/PlanningForm'
 import { AIConfigPanel } from '@/components/settings/AIConfigPanel'
-import { resumeByCode } from '@/services/api'
 import { useAppStore } from '@/store/sessionStore'
 import { PARKS } from '@/constants/parks'
 import type { ParkId } from '@/types'
@@ -12,30 +11,6 @@ export function HomePage() {
   const navigate = useNavigate()
   const { resumeSession } = useAppStore()
   const [selectedPark, setSelectedPark] = useState<ParkId | null>(null)
-  const [resumeCode, setResumeCode] = useState('')
-  const [resumeError, setResumeError] = useState<string | null>(null)
-  const [resumeLoading, setResumeLoading] = useState(false)
-
-  const handleResume = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!resumeCode.trim()) return
-    setResumeError(null)
-    setResumeLoading(true)
-    try {
-      const res = await resumeByCode(resumeCode.trim())
-      resumeSession(
-        res.sessionId,
-        res.planning.parkId as ParkId,
-        res.planning,
-        res.completedAttractions,
-      )
-      navigate('/assistant')
-    } catch {
-      setResumeError('恢复码无效或已过期，请重新输入')
-    } finally {
-      setResumeLoading(false)
-    }
-  }
 
   if (selectedPark) {
     return (
@@ -123,31 +98,6 @@ export function HomePage() {
               <p className="text-xs text-gray-400">{desc}</p>
             </div>
           ))}
-        </div>
-
-        <div className="mt-8 border-t border-gray-100 pt-6">
-          <p className="text-xs text-center text-gray-400 mb-3">已有游园记录？输入恢复码继续</p>
-          <form onSubmit={handleResume} className="flex gap-2">
-            <input
-              value={resumeCode}
-              onChange={(e) => setResumeCode(e.target.value.toUpperCase())}
-              placeholder="输入6位恢复码"
-              maxLength={6}
-              className="flex-1 rounded-xl border border-gray-200 px-3 py-2.5 text-sm font-mono tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase"
-            />
-            <button
-              type="submit"
-              disabled={resumeLoading || resumeCode.length < 6}
-              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <LogIn className="w-4 h-4" />
-              恢复
-            </button>
-          </form>
-          {resumeError && (
-            <p className="text-xs text-red-500 text-center mt-2">{resumeError}</p>
-          )}
-        </div>
       </div>
     </div>
   )

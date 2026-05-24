@@ -103,18 +103,6 @@ class UpdateSessionResponse(BaseModel):
     completed_attractions: list[str]
 
 
-class ShareSessionResponse(BaseModel):
-    code: str
-    expires_in_seconds: int
-
-
-class ResumeSessionResponse(BaseModel):
-    session_id: str
-    planning: PlanningInfo
-    completed_attractions: list[str]
-    current_location: dict | None
-
-
 # ── User / Visit schemas ──────────────────────────────────────────────────────
 
 class LoginRequest(BaseModel):

@@ -1,3 +1,10 @@
+"""视觉定位 API——上传乐园照片，AI 识别当前位置。
+
+模型兼容性：
+- ✅ 支持：Anthropic Claude、Google Gemini、OpenAI GPT-4V/4o、Ollama vision 模型
+- ❌ 不支持：DeepSeek（无视觉能力），会尝试自动回退到可用视觉模型
+"""
+
 import base64
 import json
 import logging
@@ -14,6 +21,34 @@ router = APIRouter()
 logger = logging.getLogger("app.vision")
 
 _DATA_DIR = Path(__file__).parent.parent.parent / "data"
+
+# ── 不支持视觉的 API 模式 ─────────────────────────────────────────────────
+_VISION_BLIND_MODES = {"deepseek"}
+
+
+def _find_vision_capable_fallback() -> dict[str, str] | None:
+    """在内测配置中寻找一个支持视觉的模型作为回退。"""
+    for profile in settings.ai_internal_profiles:
+        if profile.api_mode not in _VISION_BLIND_MODES:
+            from app.services.ai_service import API_MODE_DEFAULTS, SUPPORTED_API_MODES
+            api_mode = profile.api_mode if profile.api_mode in SUPPORTED_API_MODES else "anthropic"
+            return {
+                "source": "internal",
+                "api_key": profile.api_key.strip(),
+                "base_url": profile.base_url,
+                "api_mode": api_mode,
+                "model_id": profile.model_id,
+            }
+    # 尝试使用服务端默认 Anthropic key
+    if settings.anthropic_api_key:
+        return {
+            "source": "server",
+            "api_key": settings.anthropic_api_key,
+            "base_url": "https://api.anthropic.com",
+            "api_mode": "anthropic",
+            "model_id": settings.claude_model,
+        }
+    return None
 
 
 def _load_area_names(park_id: str) -> list[str]:
@@ -67,9 +102,38 @@ async def vision_locate(request: VisionLocateRequest):
 
     try:
         runtime = _resolve_runtime_config(request.ai_config)
-    except HTTPException:
+    except HTTPException as e:
         # Fall back to server default config
-        runtime = _resolve_runtime_config(None)
+        try:
+            runtime = _resolve_runtime_config(None)
+        except HTTPException:
+            runtime = None
+
+    if runtime is None:
+        return VisionLocateResponse(
+            area_name=None, attraction_name=None,
+            label="AI 服务未配置，无法识别位置",
+            confidence="low",
+        )
+
+    api_mode = runtime["api_mode"]
+
+    # ── 视觉模型兼容性检测 ───────────────────────────────────────────
+    if api_mode in _VISION_BLIND_MODES:
+        logger.info(
+            "Vision locate: 当前模型 %s (%s) 不支持图像识别，尝试回退",
+            runtime["model_id"], api_mode,
+        )
+        fallback = _find_vision_capable_fallback()
+        if fallback:
+            logger.info("Vision locate: 已回退到 %s (%s)", fallback["model_id"], fallback["api_mode"])
+            runtime = fallback
+        else:
+            return VisionLocateResponse(
+                area_name=None, attraction_name=None,
+                label=f"当前 AI 模型（{runtime['model_id']}）不支持图像识别。请在 .env 中配置支持视觉的 AI 模型（如 Claude 或 Gemini）",
+                confidence="low",
+            )
 
     api_mode = runtime["api_mode"]
     base_url = runtime["base_url"].rstrip("/")
@@ -157,11 +221,24 @@ async def vision_locate(request: VisionLocateRequest):
             confidence=result.get("confidence", "low"),
         )
 
+    except json.JSONDecodeError as e:
+        logger.warning("Vision locate JSON parse failed: raw=%s error=%s", text[:200], e)
+        return VisionLocateResponse(
+            area_name=None, attraction_name=None,
+            label=f"AI 返回格式异常，无法解析位置（原始回复: {text[:60]}...）",
+            confidence="low",
+        )
+    except httpx.HTTPStatusError as e:
+        logger.warning("Vision locate API error: %s %s", e.response.status_code, e.response.text[:300])
+        return VisionLocateResponse(
+            area_name=None, attraction_name=None,
+            label=f"AI 服务返回错误（{e.response.status_code}），请稍后重试或检查 API 配置",
+            confidence="low",
+        )
     except Exception as e:
         logger.warning("Vision locate failed: %s", e)
         return VisionLocateResponse(
-            area_name=None,
-            attraction_name=None,
-            label="无法识别位置，请手动描述",
+            area_name=None, attraction_name=None,
+            label=f"位置识别失败（{type(e).__name__}），请手动描述附近标志物",
             confidence="low",
         )
