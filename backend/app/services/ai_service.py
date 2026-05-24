@@ -201,14 +201,16 @@ def _build_payload(system_prompt: str, messages: list[dict], runtime: dict[str, 
 
     if api_mode == "deepseek":
         url = f"{base_url}/chat/completions"
+        # 思考模式：reasoner 或 v4-pro 模型启用，需更多 token 配额
+        thinking_enabled = any(k in model_id.lower() for k in ("reasoner", "v4-pro"))
+        max_tokens = 16384 if thinking_enabled else 4096
         payload = {
             "model": model_id,
             "messages": [{"role": "system", "content": system_prompt}, *_normalize_messages(messages, "openai")],
             "stream": stream,
-            "max_tokens": 4096,
+            "max_tokens": max_tokens,
         }
-        # 思考模式：reasoner 或 v4-pro 模型启用
-        if any(k in model_id.lower() for k in ("reasoner", "v4-pro")):
+        if thinking_enabled:
             payload["thinking"] = {"type": "enabled"}
         headers = {"Authorization": f"Bearer {api_key}"}
         return url, payload, headers
