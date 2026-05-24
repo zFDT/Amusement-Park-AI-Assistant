@@ -2,6 +2,16 @@
 上传 db/dump.sql 到远程服务器并恢复到 youyuan 数据库。
 由 db/sync.ps1 调用，也可单独运行：
     python db/upload_dump.py
+
+安全说明：所有敏感信息均通过环境变量传入，不硬编码。
+必需环境变量：
+    REMOTE_HOST      - 远程服务器 IP/域名
+    REMOTE_PORT      - 远程 PostgreSQL 端口（默认 5433）
+    SSH_USER         - SSH 用户名
+    SSH_PASS         - SSH 密码
+    SUDO_PASS        - sudo 密码（通常与 SSH_PASS 相同）
+    PG_CONTAINER     - Docker 容器名
+    REMOTE_DB_URL    - 远程数据库连接串（用于 verify）
 """
 import asyncpg, asyncio, paramiko, os, sys
 from pathlib import Path
@@ -9,13 +19,14 @@ from pathlib import Path
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 DUMP_FILE = Path(__file__).parent / "dump.sql"
-REMOTE_HOST = "your-server-ip"
-REMOTE_PORT = 5433
+REMOTE_HOST = os.getenv("REMOTE_HOST", "")
+REMOTE_PORT = int(os.getenv("REMOTE_PORT", "5433"))
 REMOTE_DUMP = "/tmp/youyuan_dump.sql"
-CONTAINER = "hyperliquid-stats-setup-postgres-1"
-SSH_USER = "zhang"
-SSH_PASS = "your-password-here"
-SUDO_PASS = "your-password-here"
+CONTAINER = os.getenv("PG_CONTAINER", "")
+SSH_USER = os.getenv("SSH_USER", "")
+SSH_PASS = os.getenv("SSH_PASS", "")
+SUDO_PASS = os.getenv("SUDO_PASS", "")
+REMOTE_DB_URL = os.getenv("REMOTE_DB_URL", "")
 
 
 def run(client, cmd):
@@ -28,6 +39,17 @@ def run(client, cmd):
 def main():
     if not DUMP_FILE.exists():
         print(f"ERROR: {DUMP_FILE} not found. Run sync.ps1 -DumpOnly first.")
+        sys.exit(1)
+
+    # 验证必需环境变量
+    missing = []
+    for var in ["REMOTE_HOST", "SSH_USER", "SSH_PASS", "SUDO_PASS", "PG_CONTAINER"]:
+        if not globals()[var]:
+            missing.append(var)
+    if missing:
+        print(f"ERROR: 缺少必需环境变量: {', '.join(missing)}")
+        print("请设置以下环境变量后重试：")
+        print("  REMOTE_HOST, SSH_USER, SSH_PASS, SUDO_PASS, PG_CONTAINER")
         sys.exit(1)
 
     size_kb = DUMP_FILE.stat().st_size / 1024

@@ -11,6 +11,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Windows 一键启动脚本已统一为根目录 `start-dev.bat`（内部调用 `start-dev.ps1`），默认后端使用 `8001`，前端使用 `5173`，并自动设置 `VITE_API_PROXY_TARGET`。
 - 开发阶段如果需要查看 AI 调用的完整上下文，可在 `backend/.env` 中设置 `AI_DEBUG_LOGGING=true`；日志会输出完整请求 payload、system prompt、chunk 和最终响应，但会对密钥类 header 做脱敏。
 
+## 安全约束
+
+- **绝对禁止在代码中硬编码任何密钥、密码、Token 或 API Key**。所有敏感信息必须通过环境变量（`.env`）传入，并确保 `.env` 已在 `.gitignore` 中。
+- **`backend/.env.example` 是模板文件**，已提交到 Git，其中的示例值必须是占位符（如 `sk-xxx`、`your-key-here`），绝不能包含真实凭证。
+- **运维脚本**（`db/upload_dump.py`、`backend/scripts/test_remote_db.py` 等）需要的服务器连接信息通过环境变量传入，脚本会在缺少必需变量时明确报错退出。
+- **禁止在 commit 中包含**：`.pem`、`.key`、`.p12`、`.pfx`、`credentials.json` 等密钥文件。
+- 如果你在代码审查中发现任何硬编码密钥，**立即修复并轮换相应平台的密钥**。
+
 ---
 
 ## 常用命令

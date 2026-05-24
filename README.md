@@ -172,6 +172,8 @@ python -m scripts.strategy_collector.redist --park hongkong_disney --force
 `db/sync.ps1` 会将本地 Docker 容器中的数据库导出为 `db/dump.sql`，再通过 SFTP 上传到远程服务器并恢复。`dump.sql` 已加入 `.gitignore`，不会提交到仓库。
 
 > 如果直接使用远程数据库，只需将 `backend/.env` 中的 `DATABASE_URL` 改为远程地址即可，无需本地 Docker PostgreSQL。
+>
+> **注意**：`db/upload_dump.py` 的远程服务器连接信息已改为通过环境变量传入。使用前请先设置 `REMOTE_HOST`、`SSH_USER`、`SSH_PASS`、`SUDO_PASS`、`PG_CONTAINER` 等环境变量，详见脚本注释。
 
 ---
 
@@ -183,6 +185,19 @@ python -m scripts.strategy_collector.redist --park hongkong_disney --force
 - `backend/logs/ai.log`：AI 交互完整日志（含 system prompt、请求 payload、流式 chunk、最终响应）
 
 开启完整 AI 日志：在 `backend/.env` 中设置 `AI_DEBUG_LOGGING=true`，重启后端即生效。
+
+---
+
+## 安全说明
+
+**本项目为开源软件，请务必注意以下安全事项：**
+
+- **绝不提交 `.env` 文件**：该文件已加入 `.gitignore`，包含 API Key 等敏感信息。请使用 `.env.example` 作为模板
+- **API Key 安全**：如果你曾在内测码配置中填写过真实 API Key，请立即前往对应平台（DeepSeek/Anthropic 等）轮换密钥
+- **数据库密码**：生产环境请修改 `docker-compose.yml` 和 `.env` 中的默认密码 `youyuan`
+- **脚本凭证**：`db/upload_dump.py` 等运维脚本的敏感信息已改为通过环境变量传入，详见脚本注释
+- **Git 历史检查**：如果你曾将含密钥的文件提交到 Git，建议使用 `git-filter-repo` 或 `BFG Repo-Cleaner` 清理历史
+- **Chrome 用户数据**： `backend/browser_data/`（小红书采集器的浏览器 Profile）包含登录态 Cookie，已在 `.gitignore` 中排除
 
 ---
 

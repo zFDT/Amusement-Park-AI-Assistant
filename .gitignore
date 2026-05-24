@@ -10,3 +10,16 @@ __pycache__/
 .DS_Store
 *.log
 db/dump.sql
+
+# 安全相关：防止密钥文件泄露
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.pem.backup
+*-secret.yaml
+secrets.yaml
+credentials.json
+service-account.json
