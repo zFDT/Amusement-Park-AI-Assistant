@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import datetime, date, time
 from app.schemas import PlanningInfo, RouteItem
 
 
@@ -59,6 +59,42 @@ def build_system_prompt(
     completed_str = "、".join(completed_attractions) if completed_attractions else "无"
     location_str = json.dumps(current_location, ensure_ascii=False) if current_location else "未知"
 
+    # ── 日期上下文处理 ─────────────────────────────────────────────────
+    real_today = date.today()
+    try:
+        visit_date = date.fromisoformat(planning.visit_date)
+    except (ValueError, TypeError):
+        visit_date = real_today
+
+    # 计算 AI 应该使用的"参考时间"
+    if visit_date == real_today:
+        # 同日游园：使用真实当前时间
+        context_time = current_time
+        date_context = ""
+    else:
+        # 未来/过去游园：使用游园日入场时间作为参考
+        entry_time = planning.entry_time or "09:00"
+        context_time = f"{planning.visit_date}T{entry_time}"
+        days_diff = (visit_date - real_today).days
+        if days_diff > 0:
+            date_context = (
+                f"\n> ⚠️ 今天是 {real_today.isoformat()}，用户计划 {days_diff} 天后（{planning.visit_date}）游园。"
+                f"以下排队数据为当前实时数据，{days_diff} 天后实际情况可能有变化，请据此给出参考建议。"
+            )
+        elif days_diff < 0:
+            date_context = f"\n> ⚠️ 用户游园日期 {planning.visit_date} 已过，请按历史回顾方式回复。"
+        else:
+            date_context = ""
+
+    # 计算剩余游玩时间（基于 context_time）
+    try:
+        ref_dt = datetime.fromisoformat(context_time)
+        exit_dt = datetime.combine(visit_date, time.fromisoformat(planning.exit_time or "21:00"))
+        remaining_minutes = max(0, int((exit_dt - ref_dt).total_seconds() / 60))
+        remaining_str = f"{remaining_minutes // 60} 小时 {remaining_minutes % 60} 分钟"
+    except Exception:
+        remaining_str = "计算失败"
+
     if strategy_snippets:
         strategy_items = "\n".join(f"  {i+1}. {s}" for i, s in enumerate(strategy_snippets[:5]))
         strategy_section = f"""共 {len(strategy_snippets[:5])} 条相关攻略：
@@ -68,21 +104,12 @@ def build_system_prompt(
     else:
         strategy_section = "暂无相关攻略数据"
 
-    # Calculate remaining hours
-    try:
-        now = datetime.fromisoformat(current_time)
-        exit_dt = datetime.fromisoformat(f"{planning.visit_date}T{planning.exit_time}")
-        remaining_minutes = max(0, int((exit_dt - now).total_seconds() / 60))
-        remaining_str = f"{remaining_minutes // 60} 小时 {remaining_minutes % 60} 分钟"
-    except Exception:
-        remaining_str = "未知"
-
     return f"""你是一个专业的迪士尼乐园游园助理，帮助游客规划最优游园路线，减少排队时间，提升游园体验。
 
 ## 当前乐园信息
 乐园：{park_name}
-当前时间：{current_time}
-游园日期：{planning.visit_date}
+参考时间：{context_time}
+游园日期：{planning.visit_date}{date_context}
 
 ## 用户信息
 人员构成：{party_desc}

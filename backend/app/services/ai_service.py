@@ -424,7 +424,7 @@ async def generate_initial_plan(
             "messages": [
                 {
                     "role": "user",
-                    "content": "请根据我的信息，为我生成一份完整的今日游园路线规划。",
+                    "content": f"请根据我的信息，为我生成一份完整的 {planning.visit_date} 游园路线规划。",
                 }
             ],
         },
@@ -434,7 +434,7 @@ async def generate_initial_plan(
         [
             {
                 "role": "user",
-                "content": "请根据我的信息，为我生成一份完整的今日游园路线规划。",
+                "content": f"请根据我的信息，为我生成一份完整的 {planning.visit_date} 游园路线规划。",
             }
         ],
         ai_config,
@@ -485,7 +485,7 @@ async def generate_initial_plan_stream(
     try:
         async for chunk in _stream_provider_text(
             system_prompt,
-            [{"role": "user", "content": "请根据我的信息，为我生成一份完整的今日游园路线规划。"}],
+            [{"role": "user", "content": f"请根据我的信息，为我生成一份完整的 {planning.visit_date} 游园路线规划。"}],
             ai_config,
             request_id,
         ):
