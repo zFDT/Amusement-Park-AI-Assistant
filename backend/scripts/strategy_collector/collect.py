@@ -374,14 +374,40 @@ def _get_detail(page: "ChromiumPage", feed_id: str, xsec_token: str) -> tuple[st
     return content, images, collects, comments
 
 
-def search_xhs(page: "ChromiumPage", keyword: str, limit: int = 20) -> list[dict]:
+def search_xhs(
+    page: "ChromiumPage",
+    keyword: str,
+    limit: int = 20,
+    sort_type: str = "general",
+    note_type: int = 0,
+    note_time: int = 0,
+) -> list[dict]:
     """
     搜索小红书，从 window.__INITIAL_STATE__.search.feeds 提取结果。
     参考 xiaohongshu-mcp search.go 的数据提取逻辑。
+
+    sort_type: general(综合) / time_descending(最新) / popularity_descending(最热)
+    note_type: 0=不限, 1=视频, 2=图文
+    note_time: 0=不限, 1=一天内, 2=一周内, 3=半年内
     """
     results = []
+
+    # 构建搜索 URL，追加支持的查询参数
+    query_parts = [f"keyword={keyword}", "source=web_explore_feed"]
+    if sort_type and sort_type != "general":
+        query_parts.append(f"sort={sort_type}")
+    # note_type 和 note_time 在 XHS web 搜索页可能通过 URL 参数生效
+    if note_type and note_type > 0:
+        query_parts.append(f"note_type={note_type}")
+    if note_time and note_time > 0:
+        query_parts.append(f"note_time={note_time}")
+    search_url = f"https://www.xiaohongshu.com/search_result?{'&'.join(query_parts)}"
+
+    logger.info(
+        "搜索: keyword=%s sort=%s note_type=%s note_time=%s",
+        keyword, sort_type, note_type, note_time,
+    )
     try:
-        search_url = f"https://www.xiaohongshu.com/search_result?keyword={keyword}&source=web_explore_feed"
         page.get(search_url)
         time.sleep(3)
 
@@ -593,10 +619,17 @@ async def collect(
     max_total: int | None = None,
     keyword_scope: str = "extended",
     resume: bool = False,
+    sort_type: str = "general",
+    note_type: int = 0,
+    note_time: int = 0,
 ):
     """采集主流程。
 
     如果 resume=True，跳过浏览器采集阶段，直接从本地备份文件加载数据入库。
+
+    sort_type: general(综合) / time_descending(最新) / popularity_descending(最热)
+    note_type: 0=不限, 1=视频, 2=图文
+    note_time: 0=不限, 1=一天内, 2=一周内, 3=半年内
     """
     # ── resume 模式：从本地备份恢复 ──
     if resume:
@@ -687,7 +720,13 @@ async def collect(
                 break
 
             logger.info(f"搜索关键词：{keyword}")
-            items = search_xhs(page, keyword, limit=limit_per_keyword)
+            items = search_xhs(
+                page, keyword,
+                limit=limit_per_keyword,
+                sort_type=sort_type,
+                note_type=note_type,
+                note_time=note_time,
+            )
 
             for item in items:
                 item_counter += 1
@@ -779,6 +818,13 @@ if __name__ == "__main__":
                        help="关键词范围：basic(基础4-5个) / extended(基础+场景~15个) / full(全部~30个)")
     parser.add_argument("--resume", action="store_true",
                        help="从本地备份文件恢复入库（跳过浏览器采集，仅执行 DB 写入+提炼）")
+    parser.add_argument("--sort", default="general",
+                       choices=["general", "time_descending", "popularity_descending"],
+                       help="搜索排序方式：general(综合,默认) / time_descending(最新) / popularity_descending(最热)")
+    parser.add_argument("--note-type", type=int, default=0, choices=[0, 1, 2],
+                       help="笔记类型过滤：0=不限, 1=视频, 2=图文")
+    parser.add_argument("--note-time", type=int, default=0, choices=[0, 1, 2, 3],
+                       help="笔记时间过滤：0=不限, 1=一天内, 2=一周内, 3=半年内")
     args = parser.parse_args()
 
     asyncio.run(collect(
@@ -791,4 +837,7 @@ if __name__ == "__main__":
         max_total=args.max_total,
         keyword_scope=args.keyword_scope,
         resume=args.resume,
+        sort_type=args.sort,
+        note_type=args.note_type,
+        note_time=args.note_time,
     ))

@@ -326,6 +326,35 @@ _XHS_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
 }
 
+
+def _convert_to_nowatermark_url(img_url: str) -> str:
+    """
+    将小红书 CDN 图片 URL 转换为无水印地址。
+    参考 Spider_XHS 的 get_note_no_water_img() 逻辑，
+    处理 notes_pre_post / spectrum / jpg 等多种 URL 模式。
+    转换失败时降级返回原始 URL。
+    """
+    try:
+        if "notes_pre_post/" in img_url:
+            # 新版图片资源，保留 notes_pre_post token
+            token = "notes_pre_post/" + img_url.split("notes_pre_post/", 1)[1].split("!", 1)[0].split("?", 1)[0]
+            return f"https://ci.xiaohongshu.com/{token}?imageView2/format/jpeg"
+        elif "spectrum" in img_url:
+            # spectrum 格式图片
+            token = "/".join(img_url.split("/")[-2:]).split("!", 1)[0].split("?", 1)[0]
+            return f"https://ci.xiaohongshu.com/{token}?imageView2/format/jpeg"
+        elif ".jpg" in img_url.lower() or ".png" in img_url.lower() or ".webp" in img_url.lower():
+            # 标准图片格式
+            token = "/".join([s for s in img_url.split("/")[-3:]]).split("!", 1)[0].split("?", 1)[0]
+            return f"https://ci.xiaohongshu.com/{token}?imageView2/format/jpeg"
+        else:
+            # 其他格式，取最后一段路径
+            token = img_url.split("/")[-1].split("!", 1)[0].split("?", 1)[0]
+            return f"https://ci.xiaohongshu.com/{token}?imageView2/format/jpeg"
+    except Exception:
+        logger.debug("无水印 URL 转换失败，降级使用原始 URL: %s", img_url[:80])
+        return img_url
+
 SUPPORTED_DISTILL_API_MODES = {"openai", "openai-responses", "anthropic", "gemini", "deepseek"}
 
 
@@ -470,9 +499,17 @@ async def distill_strategy(
 
     urls_to_fetch = image_urls[:4]
     if urls_to_fetch:
+        # 先转换为无水印 URL，提升 AI 视觉提炼的图片质量
+        nowatermark_urls = [_convert_to_nowatermark_url(u) for u in urls_to_fetch]
+        if any(nw != orig for nw, orig in zip(nowatermark_urls, urls_to_fetch)):
+            logger.debug(
+                "[distill] 转换无水印 URL: %d/%d 张图片",
+                sum(1 for nw, orig in zip(nowatermark_urls, urls_to_fetch) if nw != orig),
+                len(urls_to_fetch),
+            )
         async with httpx.AsyncClient(headers=_XHS_HEADERS) as http:
             results = await asyncio.gather(
-                *[_fetch_image_b64(u, http) for u in urls_to_fetch],
+                *[_fetch_image_b64(u, http) for u in nowatermark_urls],
                 return_exceptions=True,
             )
         for result in results:
