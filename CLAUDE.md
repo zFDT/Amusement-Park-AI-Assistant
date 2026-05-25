@@ -109,13 +109,13 @@ yarn build        # TypeScript 编译 + Vite 构建
 **数据库模型**（`models/park.py`）：
 - `Park` / `Attraction` / `Strategy` 三张表，用 SQLAlchemy async。
 - `Attraction.queue_times_ride_id` 是与 queue-times.com 数据关联的外键。
-- `Strategy` 额外字段：`image_urls`（JSON，图片 CDN URL 列表）、`ai_summary`（Text，纯文本摘要，降级显示用）、`structured_summary`（JSON，AI 结构化提炼结果，含 `is_useful`/`strategy_type`/`strategy_subtypes`/`mentioned_attractions`/`suggested_route`/`tips`/`summary`）、`search_vector`（TSVECTOR，PostgreSQL 全文搜索）。
+- `Strategy` 额外字段：`image_urls`（JSON，图片 URL 列表，入库前自动转为 ci.xiaohongshu.com 无水印地址）、`ai_summary`（Text，纯文本摘要，降级显示用）、`structured_summary`（JSON，AI 结构化提炼结果，含 `is_useful`/`strategy_type`/`strategy_subtypes`/`mentioned_attractions`/`suggested_route`/`tips`/`summary`）、`search_vector`（TSVECTOR，PostgreSQL 全文搜索）。
 - Session 和消息历史**不入库**，只存 Redis。
 
 **攻略采集与提炼**（`scripts/strategy_collector/`）：
 
-- `collect.py`：DrissionPage 驱动 Chrome，从 `window.__INITIAL_STATE__` 提取搜索结果和详情（参考 xiaohongshu-mcp 方案，比 DOM 选择器更稳定）。关键词支持 `--keyword-scope basic/extended/full` 三级动态生成（基础→场景→项目关键词）。采集完成后自动调用 AI 提炼。
-- `distill.py`：调用视觉模型（支持 anthropic/openai/gemini/deepseek），分析笔记正文 + 图片（最多4张，deepseek 仅文本）。v2 升级：乐园差异化 System Prompt（含项目白名单 + 园区分布 + 乐园特色），输出新增 `strategy_type`（9 类）和 `strategy_subtypes`（14 个场景标签），后处理校验项目名白名单 + 别名模糊匹配。使用 httpx 直接调用，不依赖 anthropic SDK。
+- `collect.py`：DrissionPage 驱动 Chrome，从 `window.__INITIAL_STATE__` 提取搜索结果和详情（参考 xiaohongshu-mcp 方案，比 DOM 选择器更稳定）。新增 `--sort`（general/time_descending/popularity_descending）、`--note-type`（0=不限/1=视频/2=图文）、`--note-time`（0=不限/1=一天内/2=一周内/3=半年内）搜索过滤参数。关键词支持 `--keyword-scope basic/extended/full` 三级动态生成（基础→场景→项目关键词）。图片入库前自动转为 `ci.xiaohongshu.com` 无水印地址。采集完成后自动调用 AI 提炼。
+- `distill.py`：调用视觉模型（支持 anthropic/openai/gemini/deepseek），分析笔记正文 + 图片（最多4张，deepseek 仅文本）。v2 升级：乐园差异化 System Prompt（含项目白名单 + 园区分布 + 乐园特色），输出新增 `strategy_type`（9 类）和 `strategy_subtypes`（14 个场景标签），后处理校验项目名白名单 + 别名模糊匹配。提供 `convert_to_nowatermark_url()` 公共函数，将 XHS CDN 图片 URL 转为无水印地址。使用 httpx 直接调用，不依赖 anthropic SDK。
 - `redist.py`：对已入库但缺少摘要的攻略批量补充提炼；`--force` 参数可强制重新提炼所有攻略。
 - `strategy_service.py`：v2 多路召回系统（热门 / 类型多样 / 偏好匹配 / 时效性）→ 去重 + 多样性保障 → 格式化输出。注入 System Prompt 时优先使用 `structured_summary`（跳过 `is_useful=False` 的攻略），降级到 `ai_summary`，再降级到原始正文截取。
 

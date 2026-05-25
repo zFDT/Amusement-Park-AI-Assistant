@@ -31,7 +31,7 @@ from app.core.config import settings
 from app.core.logging import configure_logging
 from app.core.database import AsyncSessionLocal
 from app.models.park import Strategy
-from scripts.strategy_collector.distill import distill_batch, resolve_distill_ai_config
+from scripts.strategy_collector.distill import distill_batch, resolve_distill_ai_config, convert_to_nowatermark_url
 
 logger = logging.getLogger(__name__)
 
@@ -358,11 +358,12 @@ def _get_detail(page: "ChromiumPage", feed_id: str, xsec_token: str) -> tuple[st
 
         content = detail.get("desc", "")
 
-        # 提取所有图片（urlDefault 优先，fallback urlPre）
+        # 提取所有图片（urlDefault 优先，fallback urlPre），转为无水印 URL 后入库
         for img in detail.get("imageList", []):
             url = img.get("urlDefault") or img.get("urlPre", "")
             if url:
-                images.append(url)
+                # 转换为无水印地址，方便前端直接展示
+                images.append(convert_to_nowatermark_url(url))
 
         interact = detail.get("interactInfo", {})
         collects = _parse_count(interact.get("collectedCount", "0"))

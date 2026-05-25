@@ -380,7 +380,7 @@ Response:
 | `comments` | Integer | 评论数 |
 | `tags` | JSON | 关键词标签 |
 | `mentioned_attractions` | JSON | 文中提及的项目名称 |
-| `image_urls` | JSON | 图片 CDN URL 列表 |
+| `image_urls` | JSON | 图片 URL 列表（入库前自动转为 ci.xiaohongshu.com 无水印地址） |
 | `ai_summary` | Text | 纯文本摘要（降级显示用） |
 | `structured_summary` | JSON | AI 结构化提炼结果（`is_useful`/`mentioned_attractions`/`suggested_route`/`tips`/`summary`） |
 | `collected_at` | DateTime | 采集时间 |
@@ -390,11 +390,11 @@ Response:
 
 ```text
 DrissionPage (Chrome)
-  → 搜索关键词（香港迪士尼攻略 等5个关键词）
+  → 搜索关键词（支持 --sort / --note-type / --note-time 排序过滤）
   → 从 window.__INITIAL_STATE__.search.feeds 提取笔记列表（含 xsecToken）
   → 逐条导航到 /explore/{feedID}?xsec_token=...
   → 从 window.__INITIAL_STATE__.note.noteDetailMap 提取正文 + imageList
-  → 入库（Strategy 表）
+  → 图片 URL 自动转为无水印地址（ci.xiaohongshu.com），入库（Strategy 表）
 
 Claude Haiku（视觉模型）
   → 输入：笔记标题 + 正文 + 图片（最多4张，base64）

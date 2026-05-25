@@ -327,9 +327,9 @@ _XHS_HEADERS = {
 }
 
 
-def _convert_to_nowatermark_url(img_url: str) -> str:
+def convert_to_nowatermark_url(img_url: str) -> str:
     """
-    将小红书 CDN 图片 URL 转换为无水印地址。
+    将小红书 CDN 图片 URL 转换为无水印地址（ci.xiaohongshu.com），供前端直接展示。
     参考 Spider_XHS 的 get_note_no_water_img() 逻辑，
     处理 notes_pre_post / spectrum / jpg 等多种 URL 模式。
     转换失败时降级返回原始 URL。
@@ -500,7 +500,7 @@ async def distill_strategy(
     urls_to_fetch = image_urls[:4]
     if urls_to_fetch:
         # 先转换为无水印 URL，提升 AI 视觉提炼的图片质量
-        nowatermark_urls = [_convert_to_nowatermark_url(u) for u in urls_to_fetch]
+        nowatermark_urls = [convert_to_nowatermark_url(u) for u in urls_to_fetch]
         if any(nw != orig for nw, orig in zip(nowatermark_urls, urls_to_fetch)):
             logger.debug(
                 "[distill] 转换无水印 URL: %d/%d 张图片",
