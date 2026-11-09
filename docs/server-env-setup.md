@@ -1,7 +1,7 @@
 # 服务端环境变量配置与项目重启指南
 
-> 适用服务器：`zhang@your-server-ip`（Ubuntu 22.04）
-> 项目路径：`/home/zhang/amusement-park/`
+> 适用服务器：`your-ssh-user@your-server-ip`（Ubuntu 22.04）
+> 项目路径：`/home/<user>/amusement-park/`
 > 更新日期：2026-05-24
 
 ---
@@ -24,10 +24,10 @@
 # ============================================================
 REMOTE_HOST=your-server-ip
 REMOTE_PORT=5433
-SSH_USER=zhang
+SSH_USER=your-ssh-user
 SSH_PASS=your-ssh-password-here
 SUDO_PASS=your-sudo-password-here
-PG_CONTAINER=hyperliquid-stats-setup-postgres-1
+PG_CONTAINER=your-postgres-container
 REMOTE_DB_URL=postgresql://youyuan:youyuan@localhost:5433/youyuan
 ```
 
@@ -47,13 +47,13 @@ REMOTE_DB_URL=postgresql://youyuan:youyuan@localhost:5433/youyuan
 ### 步骤 1：SSH 到服务器
 
 ```bash
-ssh zhang@your-server-ip
+ssh your-ssh-user@your-server-ip
 ```
 
 ### 步骤 2：编辑 `.env` 文件
 
 ```bash
-cd /home/zhang/amusement-park
+cd /home/<user>/amusement-park
 nano backend/.env
 ```
 
@@ -62,7 +62,7 @@ nano backend/.env
 ### 步骤 3：验证配置
 
 ```bash
-cd /home/zhang/amusement-park
+cd /home/<user>/amusement-park
 
 # 激活虚拟环境
 source backend/.venv/bin/activate
@@ -93,7 +93,7 @@ ps aux | grep uvicorn
 kill <pid>
 
 # 重新启动（2 workers，监听 8001）
-cd /home/zhang/amusement-park/backend
+cd /home/<user>/amusement-park/backend
 source .venv/bin/activate
 nohup uvicorn main:app --host 0.0.0.0 --port 8001 --workers 2 > /dev/null 2>&1 &
 
@@ -116,7 +116,7 @@ REDIS_URL=redis://localhost:6379
 CORS_ORIGINS=["http://your-server-ip","http://localhost:5173"]
 AI_DEBUG_LOGGING=true
 AI_INTERNAL_PROFILES=[...]
-AI_DISTILL_PROFILE_CODE=vip111
+AI_DISTILL_PROFILE_CODE=vip666
 ```
 
 ---
@@ -139,18 +139,18 @@ AI_DISTILL_PROFILE_CODE=vip111
 ps aux | grep uvicorn
 
 # 查看最新日志
-tail -f /home/zhang/amusement-park/backend/logs/app.log
+tail -f /home/<user>/amusement-park/backend/logs/app.log
 
 # 数据库同步（导出本地 → 上传远程）
-cd /home/zhang/amusement-park
+cd /home/<user>/amusement-park
 source backend/.venv/bin/activate
 python db/upload_dump.py
 
 # 更新代码（服务端 git 已同步到 origin/master）
-cd /home/zhang/amusement-park
+cd /home/<user>/amusement-park
 git fetch origin && git reset --hard origin/master
 # 然后重启 uvicorn
 
 # 检查 git 状态
-cd /home/zhang/amusement-park && git status
+cd /home/<user>/amusement-park && git status
 ```
