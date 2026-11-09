@@ -281,3 +281,21 @@ python -m scripts.strategy_collector.redist --park hongkong_disney --force
 | AI | Claude API（支持自定义 Key 和代理地址） |
 | 排队数据 | queue-times.com API（香港迪士尼 park_id=31） |
 | 流式通信 | Server-Sent Events (SSE) |
+
+## 技术特色与复盘
+
+### 技术亮点
+
+- **多 LLM 协议可插拔**：统一抽象接入 DeepSeek / Qwen / OpenAI / Claude / Gemini / Grok / Kimi / MiniMax 八家供应商，覆盖 `openai` / `openai-responses` / `anthropic` / `gemini` / `ollama` 等多种 API 协议；用户侧可自定义 Base URL / API Key / API Mode / Model ID，一套后端代码适配任意主流大模型。
+- **「数据源可插拔」的通用主题乐园框架**：以「乐园静态数据 + 排队数据源」可插拔设计，将乐园适配收敛为可替换的静态 JSON 与 `park_id`（queue-times.com），当前以香港迪士尼为参考实现，不局限于单一乐园。
+- **实时排队数据集成**：每 5 分钟自动刷新排队时长，颜色编码直观展示拥挤程度；游园中可对话式调整，AI 实时重新规划路线。
+- **内测码模式的产品设计**：通过 `vip666` 等内测码直接启用服务端预置 AI 配置，降低用户接入门槛，同时让密钥不落前端、兼顾安全。
+
+### 个人贡献
+
+- 独立设计并实现全栈：FastAPI 后端 + Vue3 前端，以及多 LLM 协议接入——从对话式路线规划核心链路、实时排队数据管道到通用乐园框架的数据可插拔抽象，均由我一人完成并落地为可运行项目。
+
+### 收获与规划
+
+- **收获**：完整实践了「LLM 应用 + 实时数据」的全栈落地——从多协议大模型接入、SSE 流式交互、排队数据实时集成，到可插拔乐园框架的工程抽象，加深了对对话式 AI 应用工程化的理解。
+- **规划**：后续扩展更多乐园适配（替换静态数据与 `park_id` 即可），并优化路线规划算法（引入排队预测、时段人流量等信号），进一步提升路线推荐质量。
